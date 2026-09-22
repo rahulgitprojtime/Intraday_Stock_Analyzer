@@ -1,0 +1,39 @@
+[project]
+name = "intraday-scanner"
+version = "0.1.0"
+description = "Live Indian-market intraday research and signal-ranking platform on the Groww Trading API."
+requires-python = ">=3.10"
+readme = "README.md"
+
+dependencies = [
+    "growwapi",
+    "pyotp",
+    "pandas",
+    "numpy",
+    "pyarrow",
+    "duckdb",
+    "streamlit",
+    "pyyaml",
+    "python-dotenv",
+    "plotly",
+    "tenacity",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

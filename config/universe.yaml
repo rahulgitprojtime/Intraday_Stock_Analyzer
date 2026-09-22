@@ -1,0 +1,13 @@
+# Stock universe and liquidity filters. Symbols list is a placeholder —
+# replace with the actual watchlist/universe before running M2+.
+
+symbols: []   # e.g. ["RELIANCE", "TCS", "INFY"] — resolved to exchange tokens in M2
+
+# Scope: cash equity (CASH segment) only. F&O is out of scope for this
+# project — see DECISIONS.md #6.
+filters:
+  min_price: 20.0
+  min_avg_daily_volume: 500000
+  min_avg_traded_value: 50000000     # in rupees
+  max_spread_pct: 0.5
+  max_universe_size: 200

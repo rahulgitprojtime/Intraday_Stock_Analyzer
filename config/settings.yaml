@@ -1,0 +1,27 @@
+# Application-wide settings. Overridable via environment variables where noted.
+
+mode: DATA_ONLY          # DATA_ONLY | SIGNAL_ONLY | PAPER_TRADING | LIVE_TRADING
+live_trading_confirmed: false   # must ALSO be true (env: LIVE_TRADING_CONFIRMED) to place real orders
+
+logging:
+  level: INFO
+
+storage:
+  data_dir: ./data
+  historical_cache_format: parquet   # parquet | duckdb
+  signal_log_format: sqlite
+
+feed:
+  reconnect_max_retries: 10
+  reconnect_backoff_seconds: 2       # exponential backoff base
+  stale_data_threshold_seconds: 15   # flag a symbol's data as stale after this
+
+candles:
+  timeframes_minutes: [1, 3, 5, 15]
+
+risk:
+  max_risk_per_trade_pct: 1.0        # % of capital
+  max_daily_loss_pct: 3.0
+  max_open_positions: 5
+  max_sector_exposure_pct: 30.0
+  max_capital_allocation_pct: 80.0

@@ -1,0 +1,33 @@
+# Scoring weights and signal thresholds. All illustrative defaults —
+# not tuned/optimized. See DECISIONS.md and Phase 11 of the spec: never
+# optimize weights on the full historical dataset.
+
+scoring:
+  weights:
+    trend: 25
+    momentum: 20
+    volume: 20
+    vwap: 15
+    market_context: 10
+    liquidity: 10
+  # Weights should sum to 100; validated at load time in src/utils (M6+).
+
+thresholds:
+  long_setup_min_score: 65
+  short_setup_min_score: 65
+  avoid_max_liquidity_score: 20   # below this, mark AVOID regardless of score
+
+indicators:
+  ema_periods: [9, 20, 50]
+  rsi_period: 14
+  atr_period: 14
+  adx_period: 14
+  bollinger_period: 20
+  bollinger_std: 2.0
+
+rvol:
+  method: time_of_day_adjusted     # time_of_day_adjusted | simple_ratio
+  lookback_days: 20
+
+regime:
+  volatility_lookback_days: 20

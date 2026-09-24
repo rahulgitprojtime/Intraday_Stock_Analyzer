@@ -96,3 +96,15 @@ Groww's public `instrument.csv` (~20 MB, mostly F&O) is downloaded with
 20h, and filtered to CASH EQ/IDX rows (~12.7k). No SDK auth needed for
 this. If a refresh fails, the stale cache is used (tokens rarely change
 intraday). Stock sector is **not** in the CSV — M7 needs a sector map.
+
+### #11 — Long-only momentum setups; dashboard before feed (2026-09-25, user-confirmed)
+- LONG/upward-momentum candidates only. No short setups for now.
+- Ranking is driven by named, deterministic setups experienced intraday
+  traders use (ORB, VWAP pullback/reclaim, PDH breakout, narrow CPR,
+  gap-and-go, EMA9/20 pullback, RS vs NIFTY, 1-min momentum burst), gated
+  by a stocks-in-play filter (time-of-day RVOL, gap, ATR%) and time-of-day
+  rules. Two modes: Scalp (1-min) and Day (5/15-min).
+- Cards show no price levels (no trigger/invalidation/stop/target).
+- Build order: REST 1-min pipeline → setups → scanner → recommendation +
+  dashboard MVP → live feed/depth (for Scalp quality) → context → news.
+- "Scalp" means 1-minute candidates; Groww is not a low-latency source.

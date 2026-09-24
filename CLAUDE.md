@@ -41,6 +41,7 @@ user explicitly asks — prefer targeted diffs.
   until a second broker is actually being added. The `BrokerAdapter`
   interface exists because Groww integration must stay swappable/testable,
   not because we expect to add brokers soon.
+- **Use superpowers skills** (brainstorming, writing-plans, TDD, systematic debugging, verification-before-completion) where they fit; keep token use low: read state files first, targeted reads/edits only.
 - **Sync after each iteration**: once tests pass and state files are
   updated, commit (`M<n>: ...`) and push to `origin main`.
 - **Update tracking files as you go**: `PROJECT_STATE.md` after each

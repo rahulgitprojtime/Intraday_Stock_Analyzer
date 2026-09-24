@@ -6,7 +6,13 @@ Last updated: 2026-09-25
 Live intraday **recommendation** dashboard (NSE cash equities). Groww is a
 market-data source only; the app never places orders (DECISIONS.md #8).
 
-## Current milestone: M2 — Instrument universe ✅ → next: M3 Live feed
+## Scope (2026-09-25, DECISIONS.md #11)
+LONG-only upward-momentum candidates. Ranking driven by named setups used
+by intraday traders (ORB, VWAP, PDH, CPR, EMA pullback, momentum burst),
+Scalp (1-min) and Day (5/15-min) modes, stocks-in-play pre-filter,
+time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
+
+## Current milestone: M2 — Instrument universe ✅ → next: M3 Daily prep + REST candles
 
 ### Completed
 - **M0** foundation: layered architecture, config, data models, `BrokerAdapter`.
@@ -37,6 +43,6 @@ installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 - M1 is unvalidated against the real API (needs credentials in `.env`).
 
 ### Next task
-M3: `GrowwFeed` wrapper in `src/broker/` (LTP + index + depth by
-exchange_token, tick normalization, dedupe, stale detection) with fake-feed
-tests; then the standalone live data worker.
+M3: filter universe to MIS-allowed stocks (`is_intraday`), then daily prep
+(prior-day levels, CPR, NR7, ATR%, avg volume-by-minute curve) from
+historical candles, with fixture-based tests.

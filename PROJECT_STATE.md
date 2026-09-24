@@ -12,7 +12,7 @@ by intraday traders (ORB, VWAP, PDH, CPR, EMA pullback, momentum burst),
 Scalp (1-min) and Day (5/15-min) modes, stocks-in-play pre-filter,
 time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 
-## Current milestone: M2 — Instrument universe ✅ → next: M3 Daily prep + REST candles
+## Current milestone: M3 — M3a ✅ (MIS filter + daily prep) → next: M3b candle pipeline
 
 ### Completed
 - **M0** foundation: layered architecture, config, data models, `BrokerAdapter`.
@@ -29,9 +29,14 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   `src/risk/`; renamed empty packages to `quantitative/`, `recommendation/`;
   added `qualitative/`, `storage/`; recommendation weights/categories in
   `strategy.yaml`; a test guards against order methods on the interface.
+- **M3a** `Instrument.is_intraday` parsed from the CSV; `require_intraday`
+  in universe.yaml rejects non-MIS stocks. `src/quantitative/daily_prep.py`:
+  `compute_daily_prep` (prior H/L/C, CPR normalized top>=bottom + width %,
+  NR7, inside day, Wilder ATR/ATR%) and `avg_cumulative_volume_curve`
+  (375 session minutes, ffill missing minutes) for time-of-day RVOL.
 
 ### Tests
-29 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+38 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 
 ### Key facts / known issues
@@ -43,6 +48,6 @@ installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 - M1 is unvalidated against the real API (needs credentials in `.env`).
 
 ### Next task
-M3: filter universe to MIS-allowed stocks (`is_intraday`), then daily prep
-(prior-day levels, CPR, NR7, ATR%, avg volume-by-minute curve) from
-historical candles, with fixture-based tests.
+M3b: orchestrator that fetches daily + ~20 days of 1-min history per stock
+via `BrokerAdapter` and builds DailyPrep + volume curve; then per-minute
+incremental 1-min refresh with parquet cache and 3/5/15-min resampling.

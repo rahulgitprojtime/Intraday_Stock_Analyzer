@@ -8,8 +8,9 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [ ] Pin dependency versions (DECISIONS.md #2) after first real run
 
 ## M3 — Daily prep + REST candle pipeline (next)
-- [ ] Universe: MIS-allowed (`is_intraday=1`) liquid NSE EQ stocks
-- [ ] Daily prep: prior-day H/L/C, CPR + width, NR7/inside day, ATR%, 20-day avg volume curve by minute
+- [x] Universe: MIS-allowed (`is_intraday=1`) liquid NSE EQ stocks
+- [x] Daily prep (`src/quantitative/daily_prep.py`, pure fns): prior-day H/L/C, CPR + width, NR7/inside day, ATR%, 20-day avg volume curve by minute
+- [ ] M3b: fetch daily + 20d 1-min history per stock and build DailyPrep (orchestrator)
 - [ ] Per-minute incremental 1-min candle refresh (REST, within 300/min), parquet cache
 - [ ] Resample 3/5/15-min; incomplete-candle + staleness flags
 

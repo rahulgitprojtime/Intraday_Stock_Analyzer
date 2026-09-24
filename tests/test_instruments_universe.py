@@ -97,3 +97,16 @@ def test_resolve_universe_respects_max_size(master):
     config = {"symbols": ["RELIANCE", "SMECO"], "filters": {"max_universe_size": 1}}
     u = resolve_universe(config, lambda s, e: adapter.resolve_instrument(s, e, "CASH"))
     assert len(u.stocks) == 1 and "SMECO" in u.rejected
+
+
+def test_is_intraday_parsed_and_universe_requires_mis():
+    csv = CSV + "NSE,7777,NOMIS,NSE-NOMIS,No MIS Co,EQ,CASH,EQ,INE000000002,,,,,1,0.05,,,1,1,NOMIS-EQ,0\n"
+    master = InstrumentMaster.from_csv_text(csv)
+    assert master.resolve("RELIANCE").is_intraday is True
+    assert master.resolve("NOMIS").is_intraday is False
+    adapter = GrowwAdapter(master)
+    config = {"exchange": "NSE", "allowed_series": ["EQ"], "require_intraday": True,
+              "symbols": ["RELIANCE", "NOMIS"]}
+    u = resolve_universe(config, lambda s, e: adapter.resolve_instrument(s, e, "CASH"))
+    assert [i.trading_symbol for i in u.stocks] == ["RELIANCE"]
+    assert "intraday" in u.rejected["NOMIS"]

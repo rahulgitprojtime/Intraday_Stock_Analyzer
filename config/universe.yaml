@@ -5,6 +5,7 @@
 
 exchange: NSE
 allowed_series: [EQ]     # excludes BE/SM/ST etc. (trade-to-trade, SME)
+require_intraday: true   # reject stocks with is_intraday=0 (MIS not allowed)
 
 # Starter watchlist of widely traded large caps — NOT an index
 # constituent list. Liquidity filters (M6) decide final eligibility.

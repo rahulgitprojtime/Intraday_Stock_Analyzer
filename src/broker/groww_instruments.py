@@ -92,4 +92,5 @@ class InstrumentMaster:
             name=row.get("name") or None,
             is_index=row["instrument_type"] == "IDX",
             series=row.get("series") or None,
+            is_intraday={"1": True, "0": False}.get((row.get("is_intraday") or "").strip()),
         )

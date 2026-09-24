@@ -37,6 +37,7 @@ class Instrument:
     name: str | None = None             # company / index display name
     is_index: bool = False              # e.g. NIFTY, BANKNIFTY — market context only
     series: str | None = None           # exchange series, e.g. NSE "EQ", "BE"
+    is_intraday: bool | None = None     # MIS (intraday) allowed; None = unknown
 
 
 @dataclass(frozen=True)

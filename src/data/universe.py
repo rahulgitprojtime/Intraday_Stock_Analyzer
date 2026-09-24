@@ -28,6 +28,7 @@ class ResolvedUniverse:
 def resolve_universe(config: dict, resolve: Resolver) -> ResolvedUniverse:
     exchange = config.get("exchange", "NSE")
     allowed_series = set(config.get("allowed_series") or [])
+    require_intraday = bool(config.get("require_intraday"))
     max_size = config.get("filters", {}).get("max_universe_size")
     out = ResolvedUniverse()
     seen: set[str] = set()
@@ -46,6 +47,8 @@ def resolve_universe(config: dict, resolve: Resolver) -> ResolvedUniverse:
             out.rejected[symbol] = "is an index, not a stock (list it under indices)"
         elif allowed_series and inst.series not in allowed_series:
             out.rejected[symbol] = f"series {inst.series!r} not in allowed_series"
+        elif require_intraday and inst.is_intraday is False:
+            out.rejected[symbol] = "intraday (MIS) not allowed"
         elif max_size and len(out.stocks) >= max_size:
             out.rejected[symbol] = f"exceeds max_universe_size={max_size}"
         else:

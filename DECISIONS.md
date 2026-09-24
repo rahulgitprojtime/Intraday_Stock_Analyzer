@@ -108,3 +108,12 @@ intraday). Stock sector is **not** in the CSV — M7 needs a sector map.
 - Build order: REST 1-min pipeline → setups → scanner → recommendation +
   dashboard MVP → live feed/depth (for Scalp quality) → context → news.
 - "Scalp" means 1-minute candidates; Groww is not a low-latency source.
+
+### #12 — Daily candles derived from 1-min history; CSV candle cache (2026-09-25)
+One 1-min history request per stock (29 calendar days, inside the 30-day
+window) gives both daily OHLCV (aggregated locally) for CPR/NR7/ATR and the
+20-session volume-by-minute curve. Avoids the unverified Groww daily-interval
+constant and halves REST calls. The intraday cache is stdlib CSV
+(`src/storage/candle_cache.py`, atomic replace), not parquet: Windows
+Application Control blocks pandas/pyarrow DLLs on the dev machine. Revisit
+if that changes or the cache becomes a bottleneck.

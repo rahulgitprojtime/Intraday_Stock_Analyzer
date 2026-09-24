@@ -7,12 +7,13 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [ ] Live smoke test of M1 adapter with real credentials
 - [ ] Pin dependency versions (DECISIONS.md #2) after first real run
 
-## M3 — Daily prep + REST candle pipeline (M3a done; M3b next)
+## M3 — Daily prep + REST candle pipeline (done)
 - [x] Universe: MIS-allowed (`is_intraday=1`) liquid NSE EQ stocks
 - [x] Daily prep (`src/quantitative/daily_prep.py`, pure fns): prior-day H/L/C, CPR + width, NR7/inside day, ATR%, 20-day avg volume curve by minute
-- [ ] M3b: fetch daily + 20d 1-min history per stock and build DailyPrep (orchestrator)
-- [ ] Per-minute incremental 1-min candle refresh (REST, within 300/min), parquet cache
-- [ ] Resample 3/5/15-min; incomplete-candle + staleness flags
+- [x] M3b: `build_prep` — one 1-min request/stock → daily candles + DailyPrep + volume curve
+- [x] Per-minute incremental 1-min refresh, CSV cache (`IntradayCandleCache`, DECISIONS #12)
+- [x] Resample 3/5/15-min; incomplete-candle + staleness flags (`src/data/candles.py`)
+- [ ] Worker loop wiring (universe → prep at start, refresh each minute) — lands with M6 worker
 
 ## M4 — Indicators + long setup detectors
 - [ ] EMA9/20/50, VWAP, RSI, MACD, ADX, Supertrend(10,3), ATR, ROC, time-of-day RVOL

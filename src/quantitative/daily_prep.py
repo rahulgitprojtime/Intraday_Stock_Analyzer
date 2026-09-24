@@ -14,12 +14,8 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import time
 
-from src.data.models import Candle
-
-SESSION_OPEN = time(9, 15)
-SESSION_MINUTES = 375  # 09:15-15:30 NSE cash session
+from src.data.models import SESSION_MINUTES, SESSION_OPEN, Candle
 
 
 @dataclass(frozen=True)

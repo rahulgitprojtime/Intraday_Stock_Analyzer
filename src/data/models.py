@@ -8,8 +8,13 @@ Groww-specific response shapes. This is what keeps the broker swappable
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, time
 from enum import Enum
+
+
+# NSE cash session (naive IST timestamps throughout).
+SESSION_OPEN = time(9, 15)
+SESSION_MINUTES = 375  # 09:15-15:30
 
 
 class Exchange(str, Enum):

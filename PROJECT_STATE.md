@@ -12,7 +12,7 @@ by intraday traders (ORB, VWAP, PDH, CPR, EMA pullback, momentum burst),
 Scalp (1-min) and Day (5/15-min) modes, stocks-in-play pre-filter,
 time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 
-## Current milestone: M3 — M3a ✅ (MIS filter + daily prep) → next: M3b candle pipeline
+## Current milestone: M3 ✅ → next: M4 indicators + long setup detectors
 
 ### Completed
 - **M0** foundation: layered architecture, config, data models, `BrokerAdapter`.
@@ -34,10 +34,19 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   `compute_daily_prep` (prior H/L/C, CPR normalized top>=bottom + width %,
   NR7, inside day, Wilder ATR/ATR%) and `avg_cumulative_volume_curve`
   (375 session minutes, ffill missing minutes) for time-of-day RVOL.
+- **M3b** `src/data/prep_builder.py` `build_prep` (one 1-min request per
+  stock → daily candles → DailyPrep + 20-session volume curve; only
+  sessions before today). `src/data/candles.py`: `aggregate_daily`,
+  `resample` (09:15-aligned, forming bucket flagged), `is_stale`.
+  `src/storage/candle_cache.py` `IntradayCandleCache` (CSV per symbol/day,
+  incremental refresh re-fetching the last bar). DECISIONS #12. Session
+  constants live in `src/data/models.py`.
 
 ### Tests
-38 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+46 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
+pandas/pyarrow DLLs are blocked by Windows Application Control in this
+venv — keep core code stdlib-only until that's resolved.
 
 ### Key facts / known issues
 - Feed LTP payload has **no volume**, so volume-based features come from
@@ -48,6 +57,6 @@ installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 - M1 is unvalidated against the real API (needs credentials in `.env`).
 
 ### Next task
-M3b: orchestrator that fetches daily + ~20 days of 1-min history per stock
-via `BrokerAdapter` and builds DailyPrep + volume curve; then per-minute
-incremental 1-min refresh with parquet cache and 3/5/15-min resampling.
+M4: indicators (EMA9/20/50, VWAP, RSI, MACD, ADX, Supertrend, ATR, ROC,
+time-of-day RVOL) as pure stdlib functions with reference-value tests, then
+long setup detectors with fixture candles.

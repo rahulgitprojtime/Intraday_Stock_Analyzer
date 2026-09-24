@@ -1,10 +1,52 @@
-# Stock universe and liquidity filters. Symbols list is a placeholder —
-# replace with the actual watchlist/universe before running M2+.
+# Stock universe and liquidity filters. NSE CASH equities only
+# (DECISIONS.md #6). Symbols are resolved against the Groww instrument
+# master (src/broker/groww_instruments.py); unresolvable symbols are
+# reported, never silently dropped.
 
-symbols: []   # e.g. ["RELIANCE", "TCS", "INFY"] — resolved to exchange tokens in M2
+exchange: NSE
+allowed_series: [EQ]     # excludes BE/SM/ST etc. (trade-to-trade, SME)
 
-# Scope: cash equity (CASH segment) only. F&O is out of scope for this
-# project — see DECISIONS.md #6.
+# Starter watchlist of widely traded large caps — NOT an index
+# constituent list. Liquidity filters (M6) decide final eligibility.
+symbols:
+  - RELIANCE
+  - HDFCBANK
+  - ICICIBANK
+  - INFY
+  - TCS
+  - SBIN
+  - AXISBANK
+  - KOTAKBANK
+  - LT
+  - ITC
+  - BHARTIARTL
+  - HINDUNILVR
+  - BAJFINANCE
+  - MARUTI
+  - M&M
+  - SUNPHARMA
+  - TATASTEEL
+  - HCLTECH
+  - WIPRO
+  - NTPC
+  - POWERGRID
+  - ONGC
+  - ADANIENT
+  - ULTRACEMCO
+  - TITAN
+
+# Market/sector context (M7). Verified present as instrument_type=IDX.
+indices:
+  - NIFTY
+  - BANKNIFTY
+  - NIFTYIT
+  - NIFTYAUTO
+  - NIFTYFMCG
+  - NIFTYMETAL
+  - NIFTYPHARMA
+  - NIFTYREALTY
+  - INDIAVIX
+
 filters:
   min_price: 20.0
   min_avg_daily_volume: 500000

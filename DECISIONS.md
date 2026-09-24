@@ -67,3 +67,32 @@ dependency list but got removed — the adapter's actual need is small enough
 that pulling in a dependency for it fails "never add dependencies without
 justification." Revisit only if retry needs grow more elaborate (jitter,
 per-call budgets, circuit breaking).
+
+### #8 — Pivot: recommendation engine, never an execution system (2026-09-25, user directive)
+The product is a live intraday *recommendation* dashboard, not a trading
+bot. Removed: `DATA_ONLY/…/LIVE_TRADING` modes, `live_trading_confirmed`,
+risk/position-sizing config, `src/risk/`, and the paper-trading/risk
+milestones. Supersedes #5. `BrokerAdapter` exposes market data only; a test
+asserts it has no order/position/holdings methods. Backtesting survives
+only as *methodology validation* (M10), not a user-facing module. Package
+renames (all were empty): `signals/`→`recommendation/`,
+`features/`→`quantitative/`; added `qualitative/`, `storage/`.
+
+### #9 — Live feed carries price only; volume comes from REST (2026-09-25)
+Verified against current docs: `GrowwFeed` LTP payload is only
+`{tsInMillis, ltp}` per exchange_token — no volume, OHLC, or cumulative
+quantity. Index feed is `{tsInMillis, value}`; depth feed is
+`{tsInMillis, buyBook, sellBook}`. Consequences: tick-built candles would
+have no volume, so RVOL/VWAP/OBV must use Groww's **1-minute historical
+candles** (which include volume) as the base candle source, refreshed
+incrementally each minute within the Live Data rate limit (10/s, 300/min).
+The feed is used for freshness (latest LTP, stale detection), the
+still-forming candle's price, index values, and top-of-book spread. M3/M4
+must re-check whether `get_quote` volume is a cheaper per-minute source.
+
+### #10 — Instrument master via stdlib csv, cached daily (2026-09-25)
+Groww's public `instrument.csv` (~20 MB, mostly F&O) is downloaded with
+`urllib`, cached at `data/cache/groww_instruments.csv`, refreshed after
+20h, and filtered to CASH EQ/IDX rows (~12.7k). No SDK auth needed for
+this. If a refresh fails, the stale cache is used (tokens rarely change
+intraday). Stock sector is **not** in the CSV — M7 needs a sector map.

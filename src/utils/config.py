@@ -32,6 +32,9 @@ def load_strategy() -> dict:
         raise ValueError(
             f"strategy.yaml scoring weights must sum to 100, got {total} ({weights})"
         )
+    rec = strategy.get("recommendation", {}).get("weights", {})
+    if rec and abs(sum(rec.values()) - 1.0) > 1e-9:
+        raise ValueError(f"strategy.yaml recommendation weights must sum to 1.0, got {rec}")
     return strategy
 
 

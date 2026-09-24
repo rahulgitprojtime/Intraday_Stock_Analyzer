@@ -1,79 +1,47 @@
 # ARCHITECTURE.md
 
+Recommendation-only product (DECISIONS.md #8). Nothing here places orders.
+
 ## Data flow
 
 ```
-Groww API (growwapi SDK)
-        |
+Groww API (growwapi SDK + public instrument.csv)
         v
-BrokerAdapter (src/broker/)         <- the ONLY module that imports growwapi
-        |
+src/broker/         BrokerAdapter + GrowwAdapter + InstrumentMaster
+                    <- ONLY module aware of Groww; market data only
         v
-Market Data Layer (src/data/)       <- live feed + historical, normalized
-        |                              into src/data/models.py dataclasses
-   +----+----+
-   |         |
-Live Feed  Historical
-   |         |
-   +----+----+
+src/data/           models, universe resolution, live feed worker,
+                    candle engine (1-min historical base + feed LTP) -> 3/5/15m
         v
-Candle Engine (src/data/candles.py) <- builds 1/3/5/15-min candles
+src/indicators/     pure indicator math (EMA, VWAP, RSI, ATR, ADX, RVOL, ...)
+src/quantitative/   features -> quantitative score (deterministic)
+src/market/         market regime + sector strength (index data)
+src/qualitative/    news retrieval -> normalization -> LLM structuring
+                    (sourced claims only; else NO_RELEVANT_INFORMATION)
         v
-Feature Engine (src/features/)
-        |
-   +----+----+
-   |         |
-Indicators  Market
-(src/       Context
-indicators/) (src/market/)
-   +----+----+
+src/recommendation/ blend scores -> category -> rank -> explanations
         v
-Signal Engine (src/signals/rules.py)
+src/storage/        feature/recommendation state, historical parquet cache
         v
-Scoring Engine (src/signals/scoring.py)
-        v
-Risk Engine (src/risk/)             <- independent of signal generation
-        v
-Ranking Engine (src/signals/ranking.py)
-   +----+----+
-   |         |
-Backtest   Paper Trading
-(src/       (later milestone)
-backtest/)
-   +----+----+
-        v
-Streamlit UI (app.py)               <- consumes processed state only,
-                                        never owns the market-data connection
+app.py (Streamlit)  <- reads recommendation state only
+src/backtest/       methodology validation only (no look-ahead); reuses the
+                    same quantitative/recommendation code paths
 ```
 
-## Module boundaries (hard rules, not suggestions)
+Runtime split: a **live data worker** process owns the Groww feed and REST
+polling and writes feature/recommendation state; Streamlit only reads it.
 
-- `src/broker/` is the only place `import growwapi` (or any broker SDK) may
-  appear. Everything downstream consumes `src/data/models.py` types.
-- `app.py` (Streamlit) may import from `src/signals`, `src/risk`, `src/data`
-  for *reading* processed state. It must never hold the primary live-feed
-  connection or call broker methods directly — that lives in a background
-  process/thread managed by `src/data/feed.py`.
-- `src/risk/` never imports from `src/signals/` — risk sizing is computed
-  independently and attached to a signal afterward, not baked into signal
-  scoring, so a change in one can't silently change the other.
-- `src/backtest/` reuses the same feature/signal/scoring code paths as live
-  trading (same functions, historical inputs) — it must not reimplement
-  indicator logic, or backtest results stop being trustworthy evidence about
-  live behavior.
+## Hard boundaries
 
-## Config-driven, not code-driven
+- Only `src/broker/` imports `growwapi` or parses Groww formats.
+- Streamlit never holds the feed connection or calls broker methods.
+- No LLM computes any number; Python does all indicator/score math.
+- Stale critical data => the stock is not recommended.
+- `src/backtest/` must not reimplement indicator/scoring logic.
 
-Anything a user should be able to tune without touching Python lives in
-`config/*.yaml`:
-- `settings.yaml` — mode, risk limits, storage paths, logging.
-- `strategy.yaml` — scoring weights, signal thresholds.
-- `universe.yaml` — liquidity filters, symbol universe.
+## Config
 
-## Why this shape
-
-The spec (Phase 2) asks for strict separation so that (a) the market-data
-connection can survive independently of Streamlit reruns, (b) backtesting
-can reuse live logic instead of drifting into a separate implementation,
-and (c) another AI/developer can add an indicator, strategy, or broker by
-touching one module instead of tracing logic through the whole app.
+- `settings.yaml` — storage, instrument cache, feed, candle timeframes.
+- `strategy.yaml` — indicator params, quantitative sub-weights,
+  recommendation weights + category thresholds.
+- `universe.yaml` — exchange, allowed series, symbols, indices, liquidity filters.

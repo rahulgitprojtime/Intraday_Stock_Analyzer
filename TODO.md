@@ -1,92 +1,42 @@
 # TODO.md
 
-Checklist by milestone. Check items off as completed; keep this file short —
-move detail into `PROJECT_STATE.md` or `DECISIONS.md` rather than growing
-this list with sub-notes.
+Actionable tasks only. Detail lives in `PROJECT_STATE.md` / `DECISIONS.md`.
 
-## M0 — Environment + Skills + Architecture ✅ (this session)
-- [x] Inspect environment/skills/tools
-- [x] Verify current official Groww API docs (see `docs/groww_api_notes.md`)
-- [x] CLAUDE.md / PROJECT_STATE.md / TODO.md / DECISIONS.md / ARCHITECTURE.md
-- [x] Repo skeleton
-- [x] pyproject.toml, .env.example, .gitignore
-- [x] Broker adapter interface (`src/broker/base.py`) + stub
-- [x] Shared data models (`src/data/models.py`)
-- [x] Placeholder config files
-- [x] First tests (config load, interface contract)
+## Done: M0 Foundation ✅ · M1 Groww adapter ✅ · M2 Instrument universe ✅
+- [ ] Live smoke test of M1 adapter + `get_historical_candles` with real credentials
+- [ ] Pin dependency versions (DECISIONS.md #2) after first real run
 
-## M1 — Groww authentication + API adapter ✅ (this session)
-- [x] Implement `src/broker/groww.py` against `growwapi` SDK
-- [x] Support both API-key+secret and TOTP auth flows (env-driven)
-- [x] Token refresh / expiry handling — N/A for now: adapter re-authenticates
-      on demand via `authenticate()`; proactive refresh-before-expiry can be
-      added once M3's long-running feed process needs it
-- [x] Wrap: get_quote, get_ltp, get_ohlc, get_historical_candles
-- [x] Rate-limit handling per Groww's per-type limits (retry w/ backoff)
-- [x] API error handling + retries with backoff (src/utils/retry.py)
-- [x] Tests with mocked SDK responses (no live calls) — tests/test_groww_adapter.py
-
-## M2 — Instrument universe
-- [ ] Load/cache instrument master (exchange token lookup)
-- [ ] Universe config resolution (symbols → exchange tokens)
-
-## M3 — Live market feed
-- [ ] `GrowwFeed` wrapper: subscribe/unsubscribe LTP, depth
-- [ ] Reconnection logic, stale-data detection
-- [ ] Feed runs independently of Streamlit (background process/thread)
+## M3 — Live feed (next)
+- [ ] `GrowwFeed` wrapper in `src/broker/`: subscribe/unsubscribe LTP, index value, depth by exchange_token (≤1000)
+- [ ] Normalize `tsInMillis` payloads to models; drop duplicate/out-of-order ticks
+- [ ] Connection monitoring, reconnect w/ backoff, per-symbol stale detection
+- [ ] Live data worker process (not Streamlit) writing latest-tick state
+- [ ] Check whether `get_quote` volume is a viable per-minute volume source (DECISIONS.md #9)
 
 ## M4 — Candle engine
-- [ ] Build 1/3/5/15-min candles from feed ticks
-- [ ] Handle missing/duplicate/delayed ticks, market open/close edges
+- [ ] 1-min base from Groww historical candles (incremental); forming candle from feed LTP
+- [ ] Resample 3/5/15-min; market open/close, gaps, incomplete-candle flags
 
-## M5 — Historical storage
-- [ ] Local cache (Parquet/SQLite) for historical candles
-- [ ] Incremental fetch (don't re-download what's cached)
+## M5 — Quantitative features
+- [ ] EMA9/20/50, VWAP, ADX, Supertrend, RSI, MACD, ROC, ATR, BB width, OBV
+- [ ] Time-of-day-adjusted RVOL (cumulative volume at T vs historical avg at T)
+- [ ] PDH/PDL, day H/L, opening range, breakout/breakdown, VWAP distance
+- [ ] Reference-value unit tests per indicator; quantitative sub-score
 
-## M6 — Indicators/features
-- [ ] Trend: EMA9/20/50, SMA, VWAP, ADX, Supertrend
-- [ ] Momentum: RSI, MACD, ROC
-- [ ] Volatility: ATR, Bollinger Bands + width
-- [ ] Volume: RVOL (time-of-day adjusted), OBV, volume acceleration
-- [ ] Market structure: prior day H/L, opening range, VWAP distance
-- [ ] Unit tests against known reference values for every indicator
+## M6 — Liquidity / high-volume scanner
+- [ ] Apply `universe.yaml` filters (ADV, traded value, price, spread) + liquidity score
 
-## M7 — Liquidity scanner
-- [ ] Configurable filters (price, ADV, spread) — cash equity only
-- [ ] Liquidity score (not just raw volume)
+## M7 — Market + sector
+- [ ] Sector map for universe stocks (not in instrument CSV)
+- [ ] Regime classifier + sector relative strength / alignment
 
-## M8 — Signal engine
-- [ ] Multi-factor rule engine → LONG_SETUP / SHORT_SETUP / NEUTRAL / AVOID
-- [ ] Machine-readable positive/negative factor lists per signal
+## M8 — Qualitative engine
+- [ ] Source retrieval (exchange announcements/news), normalization, LLM structuring with citations
 
-## M9 — Scoring/ranking
-- [ ] Configurable weighted scoring (`config/strategy.yaml`)
-- [ ] Ranking engine, train/validation/out-of-sample separation
+## M9 — Recommendation engine
+- [ ] `RecommendationEngine`: blend, categories, ranking, explanations, freshness gating
 
-## M10 — Risk engine
-- [ ] Entry/stop/target, ATR-based sizing, R:R, exposure limits
-- [ ] Fully independent from signal engine
-
-## M11 — Backtesting
-- [ ] Event-driven, no-look-ahead engine
-- [ ] Realistic costs (brokerage, STT, GST, stamp duty, SEBI charges, slippage)
-- [ ] Metrics: win rate, expectancy, profit factor, drawdown, Sharpe/Sortino,
-      CAGR, exposure, turnover
-- [ ] Walk-forward / out-of-sample support
-
-## M12 — Paper trading
-- [ ] DATA_ONLY / SIGNAL_ONLY / PAPER_TRADING / LIVE_TRADING modes
-- [ ] LIVE_TRADING defaults false; execution isolated from signal generation
-
-## M13 — Streamlit dashboard
-- [ ] Market overview page
-- [ ] Scanner table with filters/sorting
-- [ ] Stock detail view + "Why this stock?" explainability panel
-
-## M14 — Performance optimization
-- [ ] Caching, incremental recompute, avoid redundant API/db calls
-
-## M15 — Testing/security/documentation
-- [ ] Full test coverage per Phase 17 list
-- [ ] Secret-scanning check
-- [ ] Docs: setup, config, adding indicators/strategies/brokers
+## M10 — Methodology validation (no look-ahead)
+## M11 — Streamlit dashboard (top N, candidate card, controls)
+## M12 — Performance (incremental recompute, caching)
+## M13 — Final testing / security (secret scan, docs)

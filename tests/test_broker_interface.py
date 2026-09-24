@@ -26,4 +26,11 @@ def test_groww_adapter_methods_are_stubbed_not_faked():
     than silently returning fabricated data (project hard rule)."""
     adapter = GrowwAdapter()
     with pytest.raises(NotImplementedError):
-        adapter.authenticate()
+        adapter.connection_state()  # live feed is M3
+
+
+def test_broker_interface_exposes_no_order_execution():
+    """Recommendation-only product (DECISIONS.md #8): no order methods."""
+    banned = ("order", "position", "holding", "portfolio", "margin")
+    names = [n.lower() for n in dir(BrokerAdapter)]
+    assert not [n for n in names if any(b in n for b in banned)]

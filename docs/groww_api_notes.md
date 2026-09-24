@@ -173,10 +173,32 @@ feed.consume()  # blocking — run in its own thread/process, never in Streamlit
   book), equity order updates, F&O order updates, F&O position updates.
 - Both sync (poll `feed.get_ltp()` etc.) and async (`on_data_received`
   callback + `feed.consume()`) usage patterns.
+- **Verified 2026-09-25, payload shapes** (keyed exchange → segment → token):
+  LTP `{"tsInMillis", "ltp"}`; index `{"tsInMillis", "value"}` (index token
+  is the symbol, e.g. `NIFTY`); depth `{"tsInMillis", "buyBook", "sellBook"}`
+  with levels `{"1": {"price", "qty"}, ...}`. Subscribe instrument dicts:
+  `{"exchange", "segment", "exchange_token"}`. Callback gets `meta`
+  (exchange, segment, feed_type, feed_key). Methods: `subscribe_ltp`,
+  `subscribe_index_value`, `subscribe_market_depth` + matching
+  `unsubscribe_*`. **No volume in the feed** (DECISIONS.md #9). Order and
+  position update feeds exist but are unused by this project.
 - No documented native reconnect/heartbeat details captured yet — M3 must
   verify current behavior (does the SDK auto-reconnect? what does a dropped
   connection look like to the caller?) before finalizing stale-data
   detection logic.
+
+## Instruments CSV (verified 2026-09-25 against the live file)
+
+Columns: exchange, exchange_token, trading_symbol, groww_symbol, name,
+instrument_type, segment, series, isin, underlying_symbol,
+underlying_exchange_token, expiry_date, strike_price, lot_size, tick_size,
+freeze_quantity, is_reserved, buy_allowed, sell_allowed,
+internal_trading_symbol, is_intraday (the last two are in the file but not
+on the docs page). CASH equities: `instrument_type=EQ`, NSE series
+EQ/BE/SM/etc. Indices: `instrument_type=IDX`, `exchange_token` equals the
+symbol (NIFTY, BANKNIFTY, NIFTYIT, ..., INDIAVIX; 24 NSE indices). The SDK
+also has `get_all_instruments()` / `get_instrument_by_*`; we parse the CSV
+directly so resolution needs no auth. There is no sector column.
 
 ## Segments / exchanges (annexures — not yet fetched in detail)
 
@@ -195,6 +217,5 @@ M1 start: https://groww.in/trade-api/docs/python-sdk/annexures
   per the verified exceptions list below, adjust if real testing shows
   otherwise.
 - Order placement fields (validity, product, order_type, transaction_type
-  constants) are NOT needed for this project — no order execution is in
-  scope until/unless PAPER_TRADING or LIVE_TRADING modes are explicitly
-  built (M12+), and even then this is cash-equity-only (DECISIONS.md #6).
+  constants) are NOT needed: this is a recommendation-only product and
+  never places orders (DECISIONS.md #8).

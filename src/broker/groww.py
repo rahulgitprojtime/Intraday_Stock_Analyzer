@@ -42,6 +42,7 @@ from src.data.models import (
     Quote,
     Segment,
 )
+from src.broker.groww_instruments import InstrumentMaster
 from src.utils.retry import retry_call
 
 try:
@@ -128,7 +129,8 @@ def _require_env(name: str) -> str:
 
 
 class GrowwAdapter(BrokerAdapter):
-    def __init__(self) -> None:
+    def __init__(self, instrument_master: InstrumentMaster | None = None) -> None:
+        self._instruments = instrument_master
         self._authenticated = False
         self._client = None  # set on successful authenticate()
         auth_mode = os.getenv("GROWW_AUTH_MODE", "api_key")
@@ -210,9 +212,14 @@ class GrowwAdapter(BrokerAdapter):
                 f"Unsupported segment: {segment!r}. Only CASH is supported — "
                 "F&O is out of scope for this project (DECISIONS.md #6)."
             )
-        # Exchange-token lookup against the instrument master is M2; a
-        # trading_symbol/exchange/segment triple is enough for get_quote,
-        # get_ltp, get_ohlc, and get_historical_candles.
+        # With an instrument master attached, resolve to a full Instrument
+        # (exchange_token needed by the live feed). Without one, the bare
+        # triple is still enough for the REST snapshot/historical methods.
+        if self._instruments is not None:
+            try:
+                return self._instruments.resolve(trading_symbol, exch.value)
+            except KeyError as exc:
+                raise ValueError(str(exc)) from exc
         return Instrument(trading_symbol=trading_symbol, exchange=exch, segment=Segment.CASH)
 
     # -- Symbol formatting helpers --------------------------------------

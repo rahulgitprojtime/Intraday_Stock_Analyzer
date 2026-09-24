@@ -2,6 +2,7 @@
 # not tuned/optimized. See DECISIONS.md and Phase 11 of the spec: never
 # optimize weights on the full historical dataset.
 
+# Sub-weights inside the quantitative score (sum to 100).
 scoring:
   weights:
     trend: 25
@@ -12,10 +13,21 @@ scoring:
     liquidity: 10
   # Weights should sum to 100; validated at load time in src/utils (M6+).
 
-thresholds:
-  long_setup_min_score: 65
-  short_setup_min_score: 65
-  avoid_max_liquidity_score: 20   # below this, mark AVOID regardless of score
+# Final Recommendation Score (0-100) blend. Starting defaults, not tuned.
+# Must sum to 1.0. The score is NOT a probability of profit.
+recommendation:
+  weights:
+    quantitative: 0.60
+    qualitative: 0.20
+    market_context: 0.10
+    sector_context: 0.05
+    liquidity: 0.05
+  categories:              # min score for each analytical category
+    STRONG_CANDIDATE: 80
+    CANDIDATE: 65
+    WATCH: 50
+    NEUTRAL: 35            # below this -> AVOID
+  avoid_max_liquidity_score: 20   # below this, AVOID regardless of score
 
 indicators:
   ema_periods: [9, 20, 50]

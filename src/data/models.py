@@ -34,6 +34,9 @@ class Instrument:
     segment: Segment
     exchange_token: str | None = None   # required for live feed subscriptions
     isin: str | None = None
+    name: str | None = None             # company / index display name
+    is_index: bool = False              # e.g. NIFTY, BANKNIFTY — market context only
+    series: str | None = None           # exchange series, e.g. NSE "EQ", "BE"
 
 
 @dataclass(frozen=True)

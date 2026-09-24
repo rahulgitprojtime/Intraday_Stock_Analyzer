@@ -1,10 +1,15 @@
 from src.utils.config import load_settings, load_strategy, load_universe
 
 
-def test_settings_loads_with_safe_defaults():
+def test_settings_has_no_trading_modes():
     settings = load_settings()
-    assert settings["mode"] == "DATA_ONLY"
-    assert settings["live_trading_confirmed"] is False
+    assert "mode" not in settings and "risk" not in settings
+    assert "live_trading_confirmed" not in settings
+
+
+def test_recommendation_weights_sum_to_one():
+    weights = load_strategy()["recommendation"]["weights"]
+    assert abs(sum(weights.values()) - 1.0) < 1e-9
 
 
 def test_strategy_weights_sum_to_100():

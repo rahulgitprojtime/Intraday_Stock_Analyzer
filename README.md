@@ -1,16 +1,15 @@
 # Intraday Scanner
 
-Live Indian-market intraday research and signal-ranking platform on the
-Groww Trading API. **Identifies and ranks liquid intraday candidates using
-transparent, configurable, backtestable signals — it does not predict or
-guarantee profit.**
+Live intraday **stock recommendation dashboard** for Indian cash equities,
+using the Groww Trading API as a market-data source. Ranks liquid intraday
+candidates by a blended, explainable Recommendation Score (quantitative +
+qualitative + market/sector context + liquidity). **It never places orders
+and the score is not a probability of profit.**
 
 **Scope: NSE/BSE cash equity, intraday, only.** F&O (derivatives) is
 explicitly out of scope — see `DECISIONS.md` #6.
 
-Status: **M0 (foundation) complete.** No live trading, no real Groww calls
-yet — see `PROJECT_STATE.md` for exactly what exists and `TODO.md` for
-what's next.
+Status: see `PROJECT_STATE.md` (current milestone) and `TODO.md`.
 
 ## Setup
 
@@ -31,16 +30,9 @@ pytest
 ## Configuration
 
 All tunable behavior lives in `config/*.yaml`, not in code:
-- `settings.yaml` — mode (`DATA_ONLY` by default), risk limits, storage.
-- `strategy.yaml` — scoring weights (must sum to 100), indicator params.
+- `settings.yaml` — storage, feed, candle timeframes.
+- `strategy.yaml` — recommendation weights/categories, indicator params.
 - `universe.yaml` — symbol universe and liquidity filters.
-
-## Modes
-
-`DATA_ONLY → SIGNAL_ONLY → PAPER_TRADING → LIVE_TRADING`, set via
-`APP_MODE` / `config/settings.yaml`. `LIVE_TRADING` additionally requires
-`LIVE_TRADING_CONFIRMED=true` — two independent switches, so a config typo
-can't enable real order placement. Default is always `DATA_ONLY`.
 
 ## Documentation map
 

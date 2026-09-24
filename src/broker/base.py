@@ -10,6 +10,10 @@ for why it's exempt from the "don't over-engineer" default.
 Every method signature here is deliberately shaped after verified Groww SDK
 capabilities (see docs/groww_api_notes.md) so the adapter is a thin,
 faithful wrapper rather than a leaky abstraction invented in the abstract.
+
+Market data only. This product recommends; it never trades — the
+interface deliberately has no order/position/holdings methods
+(DECISIONS.md #8). Do not add them without an explicit user request.
 """
 
 from __future__ import annotations

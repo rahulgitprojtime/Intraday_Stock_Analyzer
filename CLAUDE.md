@@ -25,13 +25,18 @@ user explicitly asks — prefer targeted diffs.
 - **Never hard-code secrets.** Credentials come from environment variables
   (`.env`, not committed). `.env.example` holds placeholders only.
 - **Keep layers separated**: broker adapter → data layer → candle engine →
-  feature engine → signal engine → scoring → risk → ranking → UI. A layer
+  quantitative → qualitative → market/sector → recommendation → UI. A layer
   must not reach past its neighbor (e.g. Streamlit must never import from
   `src/broker` directly — it consumes processed state).
 - **No score is a probability of profit** unless it has been statistically
   validated against walk-forward/out-of-sample data. Say so in the UI.
-- **Default to safety**: `LIVE_TRADING=false` unless a human explicitly flips
-  it. Modes are `DATA_ONLY`, `SIGNAL_ONLY`, `PAPER_TRADING`, `LIVE_TRADING`.
+- **Recommendation only — never trade.** No order placement/modification,
+  positions, holdings, paper/live trading, or order-style UI controls
+  (DECISIONS.md #8). Outputs are analytical categories (STRONG_CANDIDATE,
+  CANDIDATE, WATCH, NEUTRAL, AVOID), not instructions.
+- **No LLM for numbers.** Indicators and scores are deterministic Python.
+  The LLM only structures *sourced* qualitative info; no source → 
+  `NO_RELEVANT_INFORMATION`, never invented news.
 - **Don't over-engineer.** No abstraction for a hypothetical second broker
   until a second broker is actually being added. The `BrokerAdapter`
   interface exists because Groww integration must stay swappable/testable,

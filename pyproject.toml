@@ -16,7 +16,6 @@ dependencies = [
     "pyyaml",
     "python-dotenv",
     "plotly",
-    "tenacity",
 ]
 
 [project.optional-dependencies]

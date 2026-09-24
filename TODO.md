@@ -15,14 +15,16 @@ this list with sub-notes.
 - [x] Placeholder config files
 - [x] First tests (config load, interface contract)
 
-## M1 — Groww authentication + API adapter
-- [ ] Implement `src/broker/groww.py` against `growwapi` SDK
-- [ ] Support both API-key+secret and TOTP auth flows (env-driven)
-- [ ] Token refresh / expiry handling
-- [ ] Wrap: get_quote, get_ltp, get_ohlc, get_historical_candles
-- [ ] Rate-limit handling per Groww's per-type limits
-- [ ] API error handling + retries with backoff
-- [ ] Tests with mocked SDK responses (no live calls in CI)
+## M1 — Groww authentication + API adapter ✅ (this session)
+- [x] Implement `src/broker/groww.py` against `growwapi` SDK
+- [x] Support both API-key+secret and TOTP auth flows (env-driven)
+- [x] Token refresh / expiry handling — N/A for now: adapter re-authenticates
+      on demand via `authenticate()`; proactive refresh-before-expiry can be
+      added once M3's long-running feed process needs it
+- [x] Wrap: get_quote, get_ltp, get_ohlc, get_historical_candles
+- [x] Rate-limit handling per Groww's per-type limits (retry w/ backoff)
+- [x] API error handling + retries with backoff (src/utils/retry.py)
+- [x] Tests with mocked SDK responses (no live calls) — tests/test_groww_adapter.py
 
 ## M2 — Instrument universe
 - [ ] Load/cache instrument master (exchange token lookup)

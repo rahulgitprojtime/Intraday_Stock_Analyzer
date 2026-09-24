@@ -59,3 +59,11 @@ cash-equity intraday trading only. Concretely this means:
 - If F&O is ever added later, it should be a new segment + new adapter
   methods added deliberately, not a "generalize now for something we might
   need" abstraction — consistent with Phase 21's "don't over-engineer."
+
+### #7 — Hand-rolled retry helper instead of `tenacity` (2026-09-23)
+`src/utils/retry.py` is ~30 lines: retry N times with exponential backoff,
+only for specified exception types. `tenacity` was in the original M0
+dependency list but got removed — the adapter's actual need is small enough
+that pulling in a dependency for it fails "never add dependencies without
+justification." Revisit only if retry needs grow more elaborate (jitter,
+per-call budgets, circuit breaking).

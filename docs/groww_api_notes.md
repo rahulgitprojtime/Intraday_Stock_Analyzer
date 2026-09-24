@@ -58,33 +58,103 @@ Live feed (`GrowwFeed`): up to 1000 subscriptions at a time.
 - `groww.get_greeks(exchange, underlying, trading_symbol, expiry)`. **Out of
   scope, same reason.**
 
-## Historical candles
+## Historical candles (current method — verified from the Backtesting page)
 
-`groww.get_historical_candle_data(...)` is **deprecated** — current method
-is `get_historical_candles` (verify exact signature at implementation
-time; the deprecated method's shape below is likely close but not
-guaranteed identical).
+`groww.get_historical_candle_data(...)` (documented in the Historical Data
+page) is **deprecated**. The current method is `get_historical_candles`,
+documented on the **Backtesting** page — its request shape is meaningfully
+different from the deprecated one, not just a rename:
 
-Request: `trading_symbol`, `exchange`, `segment`, `start_time`, `end_time`
-(either `YYYY-MM-DD HH:mm:ss` or epoch millis), `interval_in_minutes`.
+```python
+resp = groww.get_historical_candles(
+    exchange=groww.EXCHANGE_NSE,
+    segment=groww.SEGMENT_CASH,
+    groww_symbol="NSE-WIPRO",              # NOT trading_symbol
+    start_time="2025-09-24 10:56:00",
+    end_time="2025-09-24 12:00:00",
+    candle_interval=groww.CANDLE_INTERVAL_MIN_30,   # enum-like constant, NOT interval_in_minutes
+)
+```
 
-Response: `candles` = list of `[epoch_seconds, open, high, low, close,
-volume]`.
+- **`groww_symbol`**, not `trading_symbol` — format is `EXCHANGE-SYMBOL`
+  (hyphen), e.g. `NSE-WIPRO`, `BSE-RELIANCE`. For equities/indices it's just
+  exchange + trading symbol (no expiry/strike/option-type components, those
+  only apply to F&O and are out of scope here anyway).
+- **`candle_interval`** takes an SDK constant (see below), not a raw int.
+- Response candle rows are `[timestamp_str, open, high, low, close, volume,
+  open_interest]` — note **7 fields**, not 6 (the extra is `open_interest`,
+  `null` for non-FNO instruments — always null/ignored for us). Timestamp is
+  a string like `"2025-09-24T10:30:00"` (ISO-ish, `T` separator observed in
+  the docs' own example despite the schema table saying
+  `yyyy-MM-dd HH:mm:ss` — parse defensively for both).
+- Response also includes `closing_price`, `start_time`, `end_time`,
+  `interval_in_minutes` at the top level.
+- Data available from **2020** for equities, indices, and FNO.
 
-Per-interval request-window and history-depth limits:
+### Backtesting/historical data limits (current — supersedes the deprecated
+method's table above, which should no longer be relied on)
 
-| Interval | Max window/request | History available |
-|----------|--------------------|--------------------|
-| 1 min    | 7 days             | 3 months |
-| 5 min    | 15 days            | 3 months |
-| 10 min   | 30 days            | 3 months |
-| 1 hour   | 150 days           | 3 months |
-| 4 hours  | 365 days           | 3 months |
-| 1 day    | ~3 years (1080d)   | Full history |
-| 1 week   | No limit           | Full history |
+| Candle interval(s)                          | Max window per request |
+|----------------------------------------------|-------------------------|
+| 1, 2, 3, 5 min                                | 30 days |
+| 10, 15, 30 min                                | 90 days |
+| 1 hour, 4 hours, 1 day, 1 week, 1 month       | 180 days |
 
-This directly constrains M5 (historical storage): fetching a full 3-month
-1-min history requires ~13 chunked requests (7-day windows), not one call.
+This is what `src/broker/groww.py`'s `get_historical_candles` chunks
+against — it splits a caller's requested [start, end] range into windows no
+larger than the table above and stitches the results back together.
+
+### Candle interval constants (verified from Annexures page)
+
+| Constant | Value |
+|---|---|
+| `CANDLE_INTERVAL_MIN_1` | `1minute` |
+| `CANDLE_INTERVAL_MIN_2` | `2minute` |
+| `CANDLE_INTERVAL_MIN_3` | `3minute` |
+| `CANDLE_INTERVAL_MIN_5` | `5minute` |
+| `CANDLE_INTERVAL_MIN_10` | `10minute` |
+| `CANDLE_INTERVAL_MIN_15` | `15minute` |
+| `CANDLE_INTERVAL_MIN_30` | `30minute` |
+| `CANDLE_INTERVAL_HOUR_1` | `1hour` |
+| `CANDLE_INTERVAL_HOUR_4` | `4hour` |
+
+(Day/week/month constants exist per the limits table above but weren't
+captured verbatim in this pass — verify before using them; not needed yet
+since `config/settings.yaml` only requests 1/3/5/15-min candles.)
+
+### Exchange / Segment constants (verified from Annexures page)
+
+| Constant | Value |
+|---|---|
+| `EXCHANGE_NSE` | `NSE` |
+| `EXCHANGE_BSE` | `BSE` |
+| `EXCHANGE_MCX` | `MCX` (commodities — not used; not a Groww Trading API segment we touch) |
+| `SEGMENT_CASH` | `CASH` — **the only segment this project uses** |
+| `SEGMENT_FNO` | `FNO` — out of scope (DECISIONS.md #6) |
+| `SEGMENT_COMMODITY` | `COMMODITY` — out of scope |
+
+## Verified SDK exceptions (`growwapi.groww.exceptions`)
+
+```
+GrowwBaseException                     # root of everything
+└── GrowwAPIException                  # has .msg, .code
+    ├── GrowwAPIAuthenticationException
+    ├── GrowwAPIAuthorisationException
+    ├── GrowwAPIBadRequestException
+    ├── GrowwAPINotFoundException
+    ├── GrowwAPIRateLimitException
+    └── GrowwAPITimeoutException
+GrowwFeedException                     # separate branch, for streaming (M3)
+├── GrowwFeedConnectionException
+└── GrowwFeedNotSubscribedException
+```
+
+`src/broker/groww.py` translates these into this project's own
+`BrokerAdapterError` / `AuthenticationError` / `RateLimitError` at the
+adapter boundary, per DECISIONS.md #4 (nothing above the adapter should
+import or catch `growwapi` exception types directly). `RateLimitError` and
+`GrowwAPITimeoutException` are retried with backoff via
+`src/utils/retry.py` before being allowed to propagate.
 
 ## Live feed (`GrowwFeed`)
 
@@ -118,11 +188,13 @@ M1 start: https://groww.in/trade-api/docs/python-sdk/annexures
 
 ## Open items to verify at M1 (do not assume)
 
-- Exact signature and response shape of `get_historical_candles`
-  (replacement for the deprecated method).
-- Order placement fields beyond the sample in the intro page (validity,
-  product, order_type, transaction_type constants — full list in annexures).
-- Exception/error types (`docs/python-sdk/exceptions`) for retry/backoff
-  logic.
 - Whether market depth beyond top-of-book is available via `get_quote`
   vs. only via the streaming feed's `get_market_depth()`.
+- Exact `get_access_token` error behavior for expired/invalid TOTP secrets
+  (which exception fires) — implement against `GrowwAPIAuthenticationException`
+  per the verified exceptions list below, adjust if real testing shows
+  otherwise.
+- Order placement fields (validity, product, order_type, transaction_type
+  constants) are NOT needed for this project — no order execution is in
+  scope until/unless PAPER_TRADING or LIVE_TRADING modes are explicitly
+  built (M12+), and even then this is cash-equity-only (DECISIONS.md #6).

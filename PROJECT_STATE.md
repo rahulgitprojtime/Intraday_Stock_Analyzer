@@ -1,65 +1,74 @@
 # PROJECT_STATE.md
 
-Last updated: 2026-09-23 (M0 bootstrap)
+Last updated: 2026-09-23 (M1 complete)
 
-## Current milestone: M0 — Environment + Skills + Architecture
+## Current milestone: M1 — Groww authentication + API adapter ✅
 
-**Status: foundation laid, not yet validated against a live Groww account.**
+**Status: implemented and tested against mocked SDK responses. Not yet run
+against a real Groww account — that's the natural next validation step
+whenever real credentials are available.**
 
-### What exists
-- Repo skeleton (`config/`, `src/*`, `tests/`, `data/*`, `docs/`) — see
-  `ARCHITECTURE.md` for the layout and rationale.
-- Tracking docs: this file, `TODO.md`, `DECISIONS.md`, `ARCHITECTURE.md`,
-  `CLAUDE.md`, `README.md`.
-- `pyproject.toml` with pinned-family dependencies (no versions frozen yet —
-  see DECISIONS.md #2).
-- `.env.example`, `.gitignore` — no secrets in repo.
-- `src/broker/base.py` — `BrokerAdapter` abstract interface derived from
-  verified Groww Python SDK capabilities (see `docs/groww_api_notes.md`).
-  **Not implemented yet** — `src/broker/groww.py` is a stub that raises
-  `NotImplementedError`. Real implementation is M1.
-- `src/data/models.py` — typed dataclasses for Quote, OHLC, Candle,
-  MarketDepth, HistoricalCandleRequest — shared vocabulary across layers.
-- `config/settings.yaml`, `config/strategy.yaml`, `config/universe.yaml` —
-  placeholder configs matching the shape described in the spec (scoring
-  weights, risk limits, universe filters). Values are illustrative defaults,
-  not tuned.
-- `tests/test_config.py`, `tests/test_broker_interface.py` — first tests;
-  verify config loads and the abstract interface can't be instantiated
-  without implementing every method. No live API calls in any test.
+### What exists (cumulative)
+- Everything from M0 (see git history / DECISIONS.md), now with scope
+  confirmed as **cash equity only — F&O excluded** (DECISIONS.md #6).
+- `src/broker/groww.py` — real implementation:
+  - `authenticate()` supports both flows (`GROWW_AUTH_MODE=api_key` or
+    `totp`), calling `GrowwAPI.get_access_token(...)` per the verified
+    docs, then constructing `GrowwAPI(access_token)`.
+  - `get_quote`, `get_ltp` (chunked at 50 instruments/call), `get_ohlc`
+    (chunked at 50), all mapping SDK responses onto this project's own
+    `Quote`/`OHLC`/`MarketDepth` dataclasses.
+  - `get_historical_candles` against the **current** (non-deprecated)
+    method — `groww_symbol` format, `candle_interval` SDK constants,
+    request-window chunking per Groww's actual per-interval limits (30
+    days for 1-5min, 90 for 10-30min, 180 for 1hr+), with de-duped
+    stitching across windows.
+  - All `growwapi.groww.exceptions.*` types translated into this project's
+    own `AuthenticationError` / `RateLimitError` / `BrokerAdapterError` at
+    the adapter boundary — nothing above `src/broker/` ever imports or
+    catches a `growwapi` exception directly.
+  - Rate-limit and timeout errors retried with exponential backoff via a
+    small hand-rolled `src/utils/retry.py` (DECISIONS.md #7 — chose not to
+    add `tenacity` as a dependency for something this small).
+  - `growwapi`/`pyotp` are imported defensively (fall back to placeholders
+    if not installed) so the module — and its tests — don't require the
+    real packages to be present.
+  - Streaming methods (`subscribe_ltp`, `get_market_depth`,
+    `connection_state`) still raise `NotImplementedError` — that's M3.
+- `tests/fakes/fake_groww.py` — a `FakeGrowwAPI` test double shaped to
+  match the verified real SDK (same constants, method names, response
+  payloads) so tests exercise real logic (auth mode switching, chunking,
+  window-splitting, retry/backoff) without needing the real package or
+  network.
+- `tests/test_groww_adapter.py` — 12 test cases: both auth flows, missing
+  env vars, SDK exception translation, calling before auth, quote/LTP/OHLC
+  response mapping, LTP chunking over 50 instruments, historical-candle
+  window splitting + dedup, unsupported interval rejection, rate-limit
+  retry (success-after-retry and exhausted-retries), and FNO-segment
+  rejection.
+- **Verification caveat**: this sandbox has no network, so `pytest` itself
+  couldn't be installed to literally run `tests/test_groww_adapter.py`
+  here. Every scenario in that file was instead run through a hand-built
+  harness reproducing the same logic (all 12 passed) — the delivered test
+  file is the real artifact to run with `pytest` once you have it
+  installed locally; treat it as unverified-by-CI until that first local
+  run confirms it.
 
-### What does NOT exist yet
-Everything from M1 onward: real Groww auth, live feed, candle engine,
-indicators, signal engine, scoring, risk engine, backtesting, paper trading,
-Streamlit dashboard. See `TODO.md`.
+### Corrected API notes (superseding earlier M0 notes)
+`docs/groww_api_notes.md` was updated after finding that the **current**
+`get_historical_candles` method (documented on the Backtesting page) has a
+meaningfully different shape than the deprecated `get_historical_candle_data`
+method M0 had only glimpsed: `groww_symbol` (hyphenated, e.g. `NSE-WIPRO`)
+instead of `trading_symbol`, `candle_interval` SDK constants instead of a
+raw `interval_in_minutes` int, a 7-field candle row (adds open interest),
+and a different, more restrictive max-window-per-request table (30/90/180
+days depending on interval, not the deprecated method's 7-365 day table).
 
-### Known constraints from verified Groww docs (full notes in
-`docs/groww_api_notes.md`)
-- Two auth flows: API-Key+Secret (daily-expiring access token) or TOTP
-  (no expiry). Both go through `GrowwAPI.get_access_token(...)`.
-- Rate limits are per **type**, not per endpoint: Auth 5/s·30/min,
-  Orders 10/s·250/min, Live Data 10/s·300/min, Non-Trading 20/s·500/min.
-  `/v1/token/api/access` additionally capped at 150/24h.
-- `get_ltp` / `get_ohlc` take up to 50 instruments per call.
-- Live streaming (`GrowwFeed`) supports up to 1000 subscriptions at a time;
-  synchronous polling or async callback via `feed.consume()`.
-- Historical candle data: max request window depends on interval (e.g. 1-min
-  candles: 7-day window per request, 3 months of history available; daily
-  candles: ~3-year window per request, full history). Full table in
-  `docs/groww_api_notes.md`.
-- `get_historical_candle_data` is **deprecated** in favor of
-  `get_historical_candles` — implement against the current method in M1,
-  verify exact signature against docs at implementation time (docs may have
-  moved since this note was written).
-
-### Scope (confirmed by user, 2026-09-23)
-Cash equity only, intraday. **F&O is out of scope** — see DECISIONS.md #6.
-`Segment` has only `CASH`; no option-chain/Greeks methods on the adapter.
-
-### Open questions for the user (none blocking M0)
-- Which Groww auth flow will be used (API key/secret vs TOTP)? Affects
-  `.env.example` fields. Currently both are stubbed.
+### Open questions for the user
+None blocking. Real credentials + a live smoke test against the actual
+Groww API would be the natural way to validate M1 before M2.
 
 ### Next action
-Begin M1 (Groww authentication + API adapter) only when the user confirms
-they want to proceed, since M1 requires real credentials to test against.
+M2 — Instrument universe (resolve symbols to exchange tokens against the
+instrument master CSV, needed before M3's live feed can subscribe to
+anything).

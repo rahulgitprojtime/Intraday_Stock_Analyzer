@@ -148,7 +148,9 @@ def _live_context() -> WorkerContext:
     from src.broker.groww_instruments import InstrumentMaster
     from src.data.universe import resolve_universe
     from src.storage.candle_cache import IntradayCandleCache
+    from dotenv import load_dotenv
 
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env")   # credentials; never logged
     storage = load_settings()["storage"]
     data_dir = Path(storage["data_dir"])
     master = InstrumentMaster.load(data_dir / storage["instrument_cache_file"],

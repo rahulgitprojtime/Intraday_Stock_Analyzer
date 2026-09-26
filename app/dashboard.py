@@ -71,7 +71,7 @@ def render() -> None:
     if not recs:
         st.info("No candidates match the filters right now.")
         return
-    st.dataframe(table_rows(recs), hide_index=True, use_container_width=True)
+    st.dataframe(table_rows(recs), hide_index=True, width="stretch")
     for r in recs:
         _card(r)
 

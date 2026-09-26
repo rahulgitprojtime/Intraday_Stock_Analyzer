@@ -66,8 +66,9 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 151 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
-venv — core code stays stdlib-only; the Streamlit dashboard needs them
-(user is unblocking). Dashboard not yet smoke-tested for this reason.
+venv — unblocked 2026-09-27 (pandas 3.0.6, pyarrow 25.0.1, streamlit
+1.64.0). Core code stays stdlib-only; only the dashboard uses Streamlit.
+Dashboard smoke-tested (AppTest headless + served on a local port).
 
 ### Key facts / known issues
 - Feed LTP payload has **no volume**, so volume-based features come from
@@ -84,5 +85,5 @@ venv — core code stays stdlib-only; the Streamlit dashboard needs them
   ranks (hidden by the default category filter).
 
 ### Next task
-Smoke-test the dashboard once pandas/pyarrow load. Then M7: live Groww feed
+Resolve the two M6 open points, then M7: live Groww feed
 + depth (needs credentials + live-price subscription).

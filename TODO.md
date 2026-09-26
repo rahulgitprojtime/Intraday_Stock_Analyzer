@@ -30,7 +30,7 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [x] Liquidity eligibility + market context (NIFTY)
 - [x] Worker: ReplaySource/LiveSource, state.json v2, demo data script
 - [x] Streamlit dashboard + view_model (no price levels)
-- [ ] Dashboard smoke run once pandas/pyarrow DLLs are unblocked
+- [x] Dashboard smoke run (AppTest headless + live server) after pandas/pyarrow unblocked
 - [ ] Decide: confluence bonus no-op; forced-AVOID ranking (see PROJECT_STATE)
 
 ## M7 — Live feed + depth (unlocks Scalp mode quality)

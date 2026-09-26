@@ -17,6 +17,7 @@ from src.quantitative.daily_prep import (
     avg_cumulative_volume_curve,
     compute_daily_prep,
 )
+from src.quantitative.liquidity import LiquidityHistory, liquidity_history
 
 LOOKBACK_CALENDAR_DAYS = 29   # stays inside the 30-day 1-min window
 VOLUME_CURVE_SESSIONS = 20
@@ -27,6 +28,7 @@ class PrepResult:
     prep: DailyPrep
     volume_curve: list[float]
     sessions: int
+    liquidity: LiquidityHistory | None = None
 
 
 def build_prep(adapter, instrument: Instrument, today: date) -> PrepResult | None:
@@ -44,5 +46,7 @@ def build_prep(adapter, instrument: Instrument, today: date) -> PrepResult | Non
     if not daily:
         return None
     recent = {d.timestamp.date() for d in daily[-VOLUME_CURVE_SESSIONS:]}
-    curve = avg_cumulative_volume_curve([c for c in minutes if c.timestamp.date() in recent])
-    return PrepResult(compute_daily_prep(daily), curve, len(daily))
+    recent_minutes = [c for c in minutes if c.timestamp.date() in recent]
+    curve = avg_cumulative_volume_curve(recent_minutes)
+    return PrepResult(compute_daily_prep(daily), curve, len(daily),
+                      liquidity_history(recent_minutes))

@@ -86,5 +86,5 @@ Confluence counts independent setup families (+0/+2/+3/+5, max 5);
 AVOID candidates are scored but never ranked; state.json schema v3.
 
 ### Next task
-M7: live Groww feed
+Monday 2026-09-28: real-day replay (see TODO), then M7: live Groww feed
 + depth (needs credentials + live-price subscription).

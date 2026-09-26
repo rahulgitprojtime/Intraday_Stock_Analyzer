@@ -4,7 +4,8 @@ Actionable tasks only. Scope: LONG-only upward-momentum candidates;
 scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 
 ## Done: M0 Foundation ✅ · M1 Groww adapter ✅ · M2 Instrument universe ✅
-- [ ] Live smoke test of M1 adapter with real credentials
+- [x] Live smoke test of M1 adapter with real credentials (7/7, 2026-09-27)
+- [ ] Monday 2026-09-28: real-day replay — download recent sessions for the universe via GrowwAdapter into replay format, replay a real day through engine + dashboard (operational validation)
 - [ ] Pin dependency versions (DECISIONS.md #2) after first real run
 
 ## M3 — Daily prep + REST candle pipeline (done)

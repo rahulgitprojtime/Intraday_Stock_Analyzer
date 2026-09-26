@@ -1,6 +1,6 @@
 # PROJECT_STATE.md
 
-Last updated: 2026-09-25
+Last updated: 2026-09-27
 
 ## Product
 Live intraday **recommendation** dashboard (NSE cash equities). Groww is a
@@ -12,7 +12,7 @@ by intraday traders (ORB, VWAP, PDH, CPR, EMA pullback, momentum burst),
 Scalp (1-min) and Day (5/15-min) modes, stocks-in-play pre-filter,
 time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 
-## Current milestone: M3 ✅ → next: M4 indicators + long setup detectors
+## Current milestone: M4 (M4a indicators ✅) → next: M4b long setup detectors
 
 ### Completed
 - **M0** foundation: layered architecture, config, data models, `BrokerAdapter`.
@@ -41,9 +41,12 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   `src/storage/candle_cache.py` `IntradayCandleCache` (CSV per symbol/day,
   incremental refresh re-fetching the last bar). DECISIONS #12. Session
   constants live in `src/data/models.py`.
+- **M4a** `src/indicators/core.py`: EMA (SMA seed), Wilder RSI/ATR/ADX,
+  MACD, Supertrend(10,3), ROC, session-reset VWAP (typical price),
+  time-of-day RVOL. Series outputs aligned to input, `None` until warm.
 
 ### Tests
-46 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+58 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — keep core code stdlib-only until that's resolved.
@@ -57,6 +60,7 @@ venv — keep core code stdlib-only until that's resolved.
 - M1 is unvalidated against the real API (needs credentials in `.env`).
 
 ### Next task
-M4: indicators (EMA9/20/50, VWAP, RSI, MACD, ADX, Supertrend, ATR, ROC,
-time-of-day RVOL) as pure stdlib functions with reference-value tests, then
-long setup detectors with fixture candles.
+M4b: long setup detectors (FORMING/TRIGGERED/EXTENDED/FAILED) with
+fixture-candle tests: ORB 5/15, VWAP pullback/reclaim, PDH breakout,
+narrow-CPR trend day, gap-and-go, EMA9/20 pullback, RS vs NIFTY, 1-min
+momentum burst.

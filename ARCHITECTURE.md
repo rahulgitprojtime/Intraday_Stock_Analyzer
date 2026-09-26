@@ -15,15 +15,18 @@ src/data/           models, universe resolution, live feed worker,
         v
 src/indicators/     pure indicator math (EMA, VWAP, RSI, ATR, ADX, RVOL, ...)
 src/quantitative/   features -> quantitative score (deterministic)
-src/market/         market regime + sector strength (index data)
+src/market/         market context (NIFTY in M6); regime + sector strength (M8)
 src/qualitative/    news retrieval -> normalization -> LLM structuring
                     (sourced claims only; else NO_RELEVANT_INFORMATION)
         v
-src/recommendation/ blend scores -> category -> rank -> explanations
+src/recommendation/ component blend -> time heuristics -> category -> rank ->
+                    evidence-backed reasons; state.json schema (v2)
         v
-src/storage/        feature/recommendation state, historical parquet cache
+src/storage/        intraday 1-min CSV candle cache (DECISIONS #12)
+src/app/            worker: ReplaySource | LiveSource -> engine -> state.json
         v
-app.py (Streamlit)  <- reads recommendation state only
+app/dashboard.py    Streamlit <- reads data/processed/state.json only
+                    (app/view_model.py: stdlib, tested)
 src/backtest/       methodology validation only (no look-ahead); reuses the
                     same quantitative/recommendation code paths
 ```
@@ -42,6 +45,6 @@ polling and writes feature/recommendation state; Streamlit only reads it.
 ## Config
 
 - `settings.yaml` — storage, instrument cache, feed, candle timeframes.
-- `strategy.yaml` — indicator params, quantitative sub-weights,
-  recommendation weights + category thresholds.
+- `strategy.yaml` — indicator params, in-play scanner, M6 `engine:` baseline
+  weights + time heuristics, category thresholds.
 - `universe.yaml` — exchange, allowed series, symbols, indices, liquidity filters.

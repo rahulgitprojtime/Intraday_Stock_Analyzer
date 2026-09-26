@@ -13,7 +13,7 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [x] M3b: `build_prep` — one 1-min request/stock → daily candles + DailyPrep + volume curve
 - [x] Per-minute incremental 1-min refresh, CSV cache (`IntradayCandleCache`, DECISIONS #12)
 - [x] Resample 3/5/15-min; incomplete-candle + staleness flags (`src/data/candles.py`)
-- [ ] Worker loop wiring (universe → prep at start, refresh each minute) — lands with M6 worker
+- [x] Worker loop wiring (universe → prep at start, refresh each minute) — M6 worker
 
 ## M4 — Indicators + long setup detectors
 - [x] EMA9/20/50, VWAP, RSI, MACD, ADX, Supertrend(10,3), ATR, ROC, time-of-day RVOL
@@ -25,12 +25,13 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [x] RVOL, gap %, ATR%, range expansion, relative strength → in-play score (`src/quantitative/in_play.py`)
 
 ## M6 — Quantitative recommendation MVP (spec: docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md)
-- [x] Spec revision 2 (extensible model, schema v2) — awaiting approval
-- [ ] Implementation plan (after spec approval)
-- [ ] Engine (components blend, setup score, time heuristics, categories, profiles, reasons, data quality)
-- [ ] Liquidity eligibility + market context (NIFTY)
-- [ ] Worker: ReplaySource/LiveSource, state.json v2, demo data script
-- [ ] Streamlit dashboard + view_model (no price levels)
+- [x] Spec revision 2 (extensible model, schema v2) — approved
+- [x] Engine (components blend, setup score, time heuristics, categories, profiles, reasons, data quality)
+- [x] Liquidity eligibility + market context (NIFTY)
+- [x] Worker: ReplaySource/LiveSource, state.json v2, demo data script
+- [x] Streamlit dashboard + view_model (no price levels)
+- [ ] Dashboard smoke run once pandas/pyarrow DLLs are unblocked
+- [ ] Decide: confluence bonus no-op; forced-AVOID ranking (see PROJECT_STATE)
 
 ## M7 — Live feed + depth (unlocks Scalp mode quality)
 - [ ] GrowwFeed wrapper: LTP/index/depth for top ~20; dedupe, reconnect, stale detection; tick velocity, spread, bid/ask imbalance

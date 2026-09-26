@@ -27,11 +27,30 @@ cp .env.example .env
 pytest
 ```
 
+## Running the MVP (M6)
+
+The worker writes `data/processed/state.json` every minute; the dashboard
+only reads that file. Nothing places orders.
+
+```bash
+# Replay a synthetic DEMO day (no credentials needed)
+python scripts/make_demo_data.py --out data/demo --day 2026-09-25
+python -m src.app.worker --replay data/demo --day 2026-09-25 --speed 60
+streamlit run app/dashboard.py        # needs pandas/pyarrow to load
+
+# Live (needs Groww credentials + live-price subscription; not yet run)
+python -m src.app.worker
+```
+
+`--speed` is simulated minutes per real minute (`0` = as fast as
+possible). DEMO data is synthetic and is not strategy evidence.
+
 ## Configuration
 
 All tunable behavior lives in `config/*.yaml`, not in code:
 - `settings.yaml` — storage, feed, candle timeframes.
-- `strategy.yaml` — recommendation weights/categories, indicator params.
+- `strategy.yaml` — M6 engine baseline weights, time heuristics, categories,
+  in-play scanner, indicator params.
 - `universe.yaml` — symbol universe and liquidity filters.
 
 ## Documentation map

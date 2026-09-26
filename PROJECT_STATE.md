@@ -12,7 +12,7 @@ by intraday traders (ORB, VWAP, PDH, CPR, EMA pullback, momentum burst),
 Scalp (1-min) and Day (5/15-min) modes, stocks-in-play pre-filter,
 time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 
-## Current milestone: M5 ✅ → next: M6 recommendation engine + dashboard MVP
+## Current milestone: M6 ✅ (quantitative recommendation MVP) → next: M7 live feed
 
 ### Completed
 - **M0** foundation: layered architecture, config, data models, `BrokerAdapter`.
@@ -52,12 +52,22 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   gap-up %, ATR%, range expansion vs daily ATR, RS vs NIFTY → linear ramps
   → weighted 0-100) with an RVOL floor gate; `rank_in_play`. Weights,
   ramps, `min_score`, `min_rvol` in `strategy.yaml` `in_play:`.
+- **M6** (spec `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`,
+  DECISIONS #14): liquidity gate (`src/quantitative/liquidity.py`), NIFTY
+  market context (`src/market/context.py`), data quality, extensible
+  `Recommendation` model, baseline scoring (component blend 0.55/0.35/0.10
+  over *available* components, time heuristics, categories), engine
+  (`src/recommendation/engine.py`), state.json v2 schema, worker
+  (`src/app/worker.py`, ReplaySource/LiveSource), deterministic DEMO data
+  (`scripts/make_demo_data.py`), Streamlit dashboard (`app/`). Replay of
+  the demo day runs end to end; LiveSource is unrun (no credentials).
 
 ### Tests
-78 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+151 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
-venv — keep core code stdlib-only until that's resolved.
+venv — core code stays stdlib-only; the Streamlit dashboard needs them
+(user is unblocking). Dashboard not yet smoke-tested for this reason.
 
 ### Key facts / known issues
 - Feed LTP payload has **no volume**, so volume-based features come from
@@ -67,8 +77,12 @@ venv — keep core code stdlib-only until that's resolved.
   defensively (tick-age heartbeat, resubscribe on reconnect).
 - M1 is unvalidated against the real API (needs credentials in `.env`).
 
+### Open points from M6 (for the user)
+- Confluence bonus is a no-op under `min(100, best + 10k)` (a TRIGGERED
+  best is already 100); `confluence_count` is still reported.
+- Forced-AVOID stocks keep their numeric score, so they can hold high
+  ranks (hidden by the default category filter).
+
 ### Next task
-M6: recommendation engine (best setup + in-play + context → score,
-category, time-of-day rules, explanation; `ext` from ATR) and a worker
-that writes state each minute; Streamlit dashboard reads it. No price
-levels on cards.
+Smoke-test the dashboard once pandas/pyarrow load. Then M7: live Groww feed
++ depth (needs credentials + live-price subscription).

@@ -17,9 +17,9 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 
 ## M4 — Indicators + long setup detectors
 - [x] EMA9/20/50, VWAP, RSI, MACD, ADX, Supertrend(10,3), ATR, ROC, time-of-day RVOL
-- [ ] Setups (state FORMING/TRIGGERED/EXTENDED/FAILED): ORB 5/15 breakout, VWAP pullback/reclaim, PDH breakout, narrow-CPR trend day, gap-and-go, EMA9/20 pullback, RS vs NIFTY, 1-min momentum burst
+- [x] Setups (state FORMING/TRIGGERED/EXTENDED/FAILED): ORB 5/15 breakout, VWAP pullback/reclaim, PDH breakout, narrow-CPR trend day, gap-and-go, EMA9/20 pullback, RS vs NIFTY, 1-min momentum burst
 - [x] Reference-value tests per indicator (`tests/test_indicators.py`)
-- [ ] Fixture-candle tests per setup
+- [x] Fixture-candle tests per setup (`tests/test_setups.py`)
 
 ## M5 — Stocks-in-play scanner
 - [ ] RVOL, gap %, ATR%, range expansion, relative strength → in-play score

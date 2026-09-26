@@ -117,3 +117,15 @@ constant and halves REST calls. The intraday cache is stdlib CSV
 (`src/storage/candle_cache.py`, atomic replace), not parquet: Windows
 Application Control blocks pandas/pyarrow DLLs on the dev machine. Revisit
 if that changes or the cache becomes a bottleneck.
+
+### #13 — Setup detector conventions (2026-09-27)
+`src/quantitative/setups.py`: each detector takes today's candles of one
+timeframe, ignores forming bars, and returns `SetupSignal(name, state,
+detail)` with state NONE/FORMING/TRIGGERED/EXTENDED/FAILED. `ext` (distance
+past the trigger that counts as EXTENDED) is passed by the caller, derived
+from ATR in M6. FORMING = within 0.75% below the trigger; pullback touch
+tolerance 0.1%; narrow CPR <= 0.25% width; gap-and-go >= 1% gap (failed on
+gap fill); RS trigger >= 0.5 pts vs NIFTY since open; momentum burst =
+body and volume >= 2x the prior 20-bar average, close in top quarter.
+All illustrative, not tuned — M10 validates. PDH breakout requires a
+cross; opening above PDH is gap-and-go territory, not PDH.

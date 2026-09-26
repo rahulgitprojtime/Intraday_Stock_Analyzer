@@ -12,7 +12,7 @@ by intraday traders (ORB, VWAP, PDH, CPR, EMA pullback, momentum burst),
 Scalp (1-min) and Day (5/15-min) modes, stocks-in-play pre-filter,
 time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 
-## Current milestone: M4 (M4a indicators ✅) → next: M4b long setup detectors
+## Current milestone: M4 ✅ → next: M5 stocks-in-play scanner
 
 ### Completed
 - **M0** foundation: layered architecture, config, data models, `BrokerAdapter`.
@@ -44,9 +44,13 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 - **M4a** `src/indicators/core.py`: EMA (SMA seed), Wilder RSI/ATR/ADX,
   MACD, Supertrend(10,3), ROC, session-reset VWAP (typical price),
   time-of-day RVOL. Series outputs aligned to input, `None` until warm.
+- **M4b** `src/quantitative/setups.py`: 9 long setup detectors (ORB 5/15,
+  PDH breakout, VWAP reclaim, VWAP pullback, EMA9/20 pullback, narrow-CPR
+  trend, gap-and-go, RS vs NIFTY, 1-min momentum burst) returning
+  `SetupSignal` states. Conventions + default thresholds: DECISIONS #13.
 
 ### Tests
-58 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+71 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — keep core code stdlib-only until that's resolved.
@@ -60,7 +64,5 @@ venv — keep core code stdlib-only until that's resolved.
 - M1 is unvalidated against the real API (needs credentials in `.env`).
 
 ### Next task
-M4b: long setup detectors (FORMING/TRIGGERED/EXTENDED/FAILED) with
-fixture-candle tests: ORB 5/15, VWAP pullback/reclaim, PDH breakout,
-narrow-CPR trend day, gap-and-go, EMA9/20 pullback, RS vs NIFTY, 1-min
-momentum burst.
+M5: stocks-in-play scanner — time-of-day RVOL, gap %, ATR%, range
+expansion, RS → in-play score gating which stocks run setup detection.

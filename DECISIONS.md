@@ -147,3 +147,17 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
 - `state.json` schema_version 2 (v1 was an unreleased draft). Incompatible
   changes increment the version and are logged here.
 - Time-of-day rules and all thresholds are unvalidated heuristics until M10.
+
+### #15 — Confluence by setup family; AVOID not rankable; state schema v3 (2026-09-27, user-approved)
+- Confluence bonus counts independent setup *families* (price_structure,
+  vwap, trend, momentum, relative_strength) that are TRIGGERED/FORMING:
+  0–1 → +0, 2 → +2, 3 → +3, 4+ → +5 (max 5), after the blend, before
+  time caps. Correlated setups in a family count once; volume/market/
+  in-play are not counted again (already in the blend). Replaces the
+  rev-2 `min(100, best + 10k)` rule, which could never change a score.
+- Two hard tiers: *excluded* (stale/missing critical data, illiquid —
+  not scored) and *AVOID* (not in play, best setup failed, score below
+  NEUTRAL floor — scored, `eligible_for_top_n: false`, `rank: null`,
+  `exclusion_reasons`). Soft penalties (time-of-day, EXTENDED, future
+  sector/volatility) stay rankable. Top-N is drawn from rankable only.
+- `state.json` schema_version 3 (AVOID rank null breaks v2 readers).

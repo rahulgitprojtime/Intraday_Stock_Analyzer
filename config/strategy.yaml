@@ -13,8 +13,11 @@ engine:
     in_play: 0.35
     market_context: 0.10
   state_points: {TRIGGERED: 100, FORMING: 60, EXTENDED: 30, FAILED: 0, NONE: 0}
-  confluence_bonus: 10     # per extra TRIGGERED setup
-  confluence_max_extra: 2
+  # Confluence: additive bonus by number of independent setup families
+  # TRIGGERED/FORMING (price_structure, vwap, trend, momentum,
+  # relative_strength). Correlated setups in one family count once.
+  confluence_bonus: {2: 2, 3: 3, 4: 5}
+  confluence_max_bonus: 5
   market_ramp_pct: [-0.5, 0.5]   # NIFTY % since open -> 0..100
   ext_atr_mult: {SCALP: 0.15, DAY: 0.30}
   ext_fallback_pct: 0.5    # when daily ATR is unavailable

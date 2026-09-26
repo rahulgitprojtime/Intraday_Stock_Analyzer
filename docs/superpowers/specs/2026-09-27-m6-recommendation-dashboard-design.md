@@ -1,6 +1,6 @@
 # M6 — Quantitative recommendation MVP: engine, worker, dashboard (design)
 
-Date: 2026-09-27 · Revision 2 · Status: revised per user review, pending approval
+Date: 2026-09-27 · Revision 3 · Status: approved; rev 3 = confluence + AVOID handling (DECISIONS #15)
 
 ## 1. Goal
 Build the first end-to-end MVP of a live/replay intraday stock
@@ -119,9 +119,17 @@ adjustments and penalties.
 | `sector_context` | unavailable | M8 |
 | `qualitative` | unavailable | M9 |
 
-Setup score: points TRIGGERED 100, FORMING 60, EXTENDED 30,
-FAILED/NONE 0; `setup = min(100, best + 10 × k)`, `k` = other TRIGGERED
-setups, capped at 2.
+Setup score: points of the best setup — TRIGGERED 100, FORMING 60,
+EXTENDED 30, FAILED/NONE 0.
+
+Confluence bonus (rev 3): additive, applied after the blend and before the
+time-of-day caps. Counts **independent setup families** that are
+TRIGGERED or FORMING — price_structure (ORB5/ORB15/PDH/GAP_AND_GO/
+NARROW_CPR), vwap (VWAP_RECLAIM/VWAP_PULLBACK), trend (EMA_PULLBACK),
+momentum (MOMENTUM_BURST), relative_strength (RS_VS_NIFTY). Correlated
+setups in one family count once. Volume, market context and in-play are
+not counted (already weighted in the blend). 0–1 families +0, 2 → +2,
+3 → +3, 4+ → +5; max +5; recorded as a `bonus` adjustment with a reason.
 
 Baseline weights: setup 0.55, in_play 0.35, market_context 0.10. These
 weights are temporary engineering defaults and are NOT claimed to be
@@ -201,7 +209,7 @@ earmarked for M6.
 ```
 available = [c for c in components if c.status == available and c.weight is configured]
 blend     = Σ(c.weight × c.value) / Σ(c.weight)   over available
-score     = clip(blend + penalties, 0, 100), then caps       (§15)
+score     = clip(blend + confluence_bonus + penalties, 0, 100), then caps (§15)
 ```
 With M6 config, available = setup, in_play, market_context → the 55/35/10
 baseline. M6 is intentionally a simplified baseline. Future:
@@ -210,9 +218,21 @@ baseline. M6 is intentionally a simplified baseline. Future:
 Adding an unavailable component never changes the score.
 
 Categories: `strategy.yaml` `recommendation.categories` (80 / 65 / 50 /
-35; below 35 AVOID). Forced AVOID when not in play or best setup FAILED.
-Excluded symbols (stale, ineligible, prep failed) get `score: null`,
-`category: null` and are listed separately, not ranked.
+35; below 35 AVOID).
+
+Hard exclusions vs soft penalties (rev 3):
+- **Excluded, not scored** — stale critical data, missing/invalid critical
+  inputs, fails liquidity. `excluded: [{symbol, reason}]`; never scored as
+  if live (§17).
+- **AVOID, scored but not rankable** — not in play, best setup FAILED,
+  score below the NEUTRAL floor. Keeps its raw score; `category: AVOID`,
+  `eligible_for_top_n: false`, `rank: null`, `exclusion_reasons`.
+- **Soft penalties, still rankable** — time-of-day heuristics, EXTENDED
+  setups (30 points), future weak-sector/volatility penalties.
+
+Flow: all eligible candidates → score/category → set AVOID aside →
+rank the rest → Top-N. An AVOID with a raw score of 95 never outranks a
+CANDIDATE at 85.
 
 ## 14. Score interpretation
 Scores rank candidates; they are not probabilities of profit. UI and state
@@ -232,8 +252,9 @@ improve ranking quality using historical data. Recorded in `adjustments`.
 
 ## 16. Recommendation stability
 Fields `rank`, `previous_rank`, `rank_change`, `score_change`,
-`time_in_top_n`. M6 sets `rank` (score desc, then symbol asc —
-deterministic) and leaves the rest `null`. A later milestone maintains
+`time_in_top_n`. M6 sets `rank` for non-AVOID candidates only (score desc,
+then symbol asc — deterministic); AVOID gets `rank: null`. The rest stay
+`null`. A later milestone maintains
 rank history.
 
 ## 17. Data freshness
@@ -308,23 +329,29 @@ gap/ORB/volume days); `data/demo/DEMO` marker → `demo: true`. Not
 committed. Engineered demo patterns are not strategy evidence; setup rules
 are not tuned on synthetic data.
 
-## 24–25. state.json (schema_version 2)
+## 24–25. state.json (schema_version 3)
 ```
-{ schema_version: 2, as_of, generated_at, source: "live"|"replay",
+{ schema_version: 3, as_of, generated_at, source: "live"|"replay",
   demo, data_age_seconds,
   market: {status, source, nifty_change_pct, score},
   modes: { SCALP: [Recommendation...], DAY: [Recommendation...] },
   excluded: [{symbol, reason}],
   in_play_count, universe_count, errors: [str] }
 ```
-Ranked recommendations (all scored symbols, AVOID included) sorted by
-rank. Written atomically (temp file + replace). Version 2 supersedes the
-unreleased v1 draft in revision 1 of this spec. Schema changes are logged in
+Each mode lists ranked candidates first (by rank), then AVOID candidates
+(rank null, by raw score) for transparency. Recommendations carry
+`eligible_for_top_n`, `exclusion_reasons`, and `setup.confluence_families`
+/ `confluence_bonus`. Written atomically (temp file + replace). v3
+replaced v2 because AVOID rank became null (incompatible for readers
+sorting by rank); v2 replaced the unreleased v1 draft. Schema changes are logged in
 DECISIONS.md; any incompatible change increments `schema_version`, and
 `view_model` rejects unknown versions with a clear banner.
 
 ## 26. Testing (TDD)
-- Engine: state points, confluence cap, blend over available components,
+- Engine: state points, confluence by family (+0/+2/+3/+5, cap, correlated
+  setups count once, changes the final score), AVOID never ranked and a
+  lower non-AVOID outranks a higher AVOID, hard exclusions vs soft
+  penalties, blend over available components,
   **unavailable future component leaves score unchanged**, market
   unavailable excluded, each time heuristic, forced AVOID, category
   boundaries, score always 0–100, weight validation (positive, M6 sum 1),

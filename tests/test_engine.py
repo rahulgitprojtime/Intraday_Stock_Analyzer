@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime, timedelta
 
 import pytest
@@ -7,8 +8,14 @@ from src.market.context import MarketContext, nifty_context
 from src.quantitative.daily_prep import DailyPrep
 from src.quantitative.in_play import InPlayConfig
 from src.quantitative.liquidity import LiquidityHistory
-from src.recommendation.engine import SymbolInputs, evaluate_symbol, rank_recommendations
+from src.recommendation.engine import (
+    SymbolInputs,
+    avoid_reasons,
+    evaluate_symbol,
+    rank_recommendations,
+)
 from src.recommendation.models import MODES
+from src.quantitative.setups import SetupSignal, SetupState
 from src.recommendation.scoring import EngineConfig, blend
 from src.utils.config import load_strategy
 
@@ -47,9 +54,9 @@ MARKET = nifty_context(INDEX, AS_OF, 120, CFG.market_ramp_pct)
 
 
 def evaluate(bars=None, *, sym="HOT", prep=PREP, liq=LIQ, market=MARKET, as_of=AS_OF,
-             curve=CURVE):
+             curve=CURVE, cfg=CFG):
     inp = SymbolInputs(sym, bars if bars is not None else trend_bars(sym), prep, curve, liq, INDEX)
-    return evaluate_symbol(inp, market, as_of, CFG, IP_CFG, FILTERS, 120)
+    return evaluate_symbol(inp, market, as_of, cfg, IP_CFG, FILTERS, 120)
 
 
 def walk(obj, key=None):
@@ -124,6 +131,7 @@ def test_illiquid_excluded():
 def test_not_in_play_forced_avoid_with_reason():
     rec = evaluate(trend_bars(vol=50)).recommendations["DAY"]
     assert rec.category == "AVOID" and rec.profile.startswith("NOT_IN_PLAY")
+    assert rec.eligible_for_top_n is False and "not in play" in rec.exclusion_reasons
     assert any(r.kind == "penalty" and "Not in play" in r.text for r in rec.reasons)
 
 
@@ -163,10 +171,56 @@ def test_reasons_are_traceable_to_computed_values():
             assert pair in leaves, (reason, pair)
 
 
-def test_rank_orders_by_score_then_symbol():
+def test_rank_orders_eligible_by_score_then_symbol_avoid_unranked():
     recs = [evaluate(sym=s).recommendations["DAY"] for s in ("CCC", "AAA", "BBB")]
     low = evaluate(trend_bars("ZZZ", vol=50), sym="ZZZ").recommendations["DAY"]
-    ranked = rank_recommendations(recs + [low])
+    ranked = rank_recommendations([low] + recs)
     assert [r.symbol for r in ranked] == ["AAA", "BBB", "CCC", "ZZZ"]
-    assert [r.rank for r in ranked] == [1, 2, 3, 4]
+    assert [r.rank for r in ranked] == [1, 2, 3, None]      # AVOID kept, never ranked
     assert all(r.previous_rank is None and r.rank_change is None for r in ranked)
+
+
+def test_lower_non_avoid_outranks_higher_avoid():
+    base = evaluate().recommendations["DAY"]
+    avoid = replace(base, symbol="HIGH", score=95.0, category="AVOID", eligible_for_top_n=False,
+                    exclusion_reasons=("not in play",))
+    cand = replace(base, symbol="LOW", score=85.0, category="STRONG_CANDIDATE")
+    ranked = rank_recommendations([avoid, cand])
+    assert [(r.symbol, r.rank) for r in ranked] == [("LOW", 1), ("HIGH", None)]
+
+
+def test_avoid_reasons_are_the_hard_quality_gates():
+    trig = SetupSignal("ORB5", SetupState.TRIGGERED, "")
+    failed = SetupSignal("ORB5", SetupState.FAILED, "")
+    assert avoid_reasons(True, trig, "CANDIDATE") == ()
+    assert avoid_reasons(False, trig, "CANDIDATE") == ("not in play",)
+    assert avoid_reasons(True, failed, "WATCH") == ("best setup failed",)
+    assert avoid_reasons(True, trig, "AVOID") == ("score below NEUTRAL floor",)
+
+
+def test_soft_penalty_stays_rankable():
+    lunch = T0 + timedelta(minutes=165)                    # 12:00
+    rec = evaluate(trend_bars(n=165), as_of=lunch).recommendations["SCALP"]
+    assert any(a.name == "lunch_lull" and a.kind == "penalty" for a in rec.adjustments)
+    assert rec.eligible_for_top_n is True and rec.category != "AVOID"
+
+
+def breakout_bars():
+    """Flat opening range, then one breakout bar: several setup families fire."""
+    bars = [Candle(inst("BRK"), 1, T0 + timedelta(minutes=i), 100, 100.2, 99.9, 100, 400)
+            for i in range(5)]
+    bars += [Candle(inst("BRK"), 1, T0 + timedelta(minutes=i), 100, 100.1, 99.95, 100, 400)
+             for i in range(5, 44)]
+    bars.append(Candle(inst("BRK"), 1, T0 + timedelta(minutes=44), 100, 100.55, 100, 100.5, 400))
+    return bars
+
+
+def test_confluence_changes_final_score():
+    rec = evaluate(breakout_bars(), sym="BRK").recommendations["SCALP"]
+    assert len(rec.setup["confluence_families"]) >= 2
+    bonus = next(a for a in rec.adjustments if a.name == "confluence")
+    assert bonus.kind == "bonus" and 0 < bonus.points <= 5
+    plain = evaluate(breakout_bars(), sym="BRK",
+                     cfg=replace(CFG, confluence_bonus={})).recommendations["SCALP"]
+    assert rec.score == pytest.approx(plain.score + bonus.points)
+    assert any(r.kind == "setup" and "families" in r.text for r in rec.reasons)

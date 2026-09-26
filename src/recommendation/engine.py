@@ -49,6 +49,7 @@ from src.recommendation.scoring import (
     apply_time_rules,
     blend,
     categorize,
+    confluence,
     setup_score,
 )
 
@@ -98,6 +99,20 @@ def profile(is_in_play: bool, best: SetupSignal | None) -> str:
     return "NOT_IN_PLAY_SETUP" if strong else "NOT_IN_PLAY"
 
 
+def avoid_reasons(is_in_play: bool, best: SetupSignal | None, category: str) -> tuple[str, ...]:
+    """Hard quality gates (DECISIONS #15): any reason → AVOID, not rankable.
+    Everything else (time-of-day, extension, weak components) is a soft
+    penalty on the score and stays rankable."""
+    out = []
+    if not is_in_play:
+        out.append("not in play")
+    if best is not None and best.state is SetupState.FAILED:
+        out.append("best setup failed")
+    if category == "AVOID":
+        out.append("score below NEUTRAL floor")
+    return tuple(out)
+
+
 def _quantitative(sscore: float, ip: InPlayResult, liq: Liquidity) -> dict:
     c = ip.components
     volatility = None
@@ -138,7 +153,8 @@ def _reasons(signals, ip, market, liq, adjustments, forced) -> tuple[Reason, ...
     if liq.avg_traded_value is not None:
         out.append(Reason("liquidity", f"Average traded value {liq.avg_traded_value / 1e7:.1f} "
                           f"Cr/day; {liq.reason}", {"avg_traded_value": liq.avg_traded_value}))
-    out += [Reason("penalty", a.reason, {"name": a.name, "points": a.points}) for a in adjustments]
+    out += [Reason("setup" if a.kind == "bonus" else "penalty", a.reason,
+                   {"name": a.name, "points": a.points}) for a in adjustments]
     return tuple(out + forced)
 
 
@@ -169,7 +185,8 @@ def evaluate_symbol(
     for mode in MODES:
         signals = run_setups(mode, bars, inp.prep, inp.index_bars,
                              extension(mode, inp.prep, cfg), as_of)
-        sscore, best, k = setup_score(signals, cfg)
+        sscore, best = setup_score(signals, cfg)
+        families, bonus = confluence(signals, cfg)
         w = cfg.weights.get
         comps = (
             Component("setup", sscore, w("setup"), AVAILABLE),
@@ -180,35 +197,55 @@ def evaluate_symbol(
             Component("sector_context", None, w("sector_context"), UNAVAILABLE),
             Component("qualitative", None, w("qualitative"), UNAVAILABLE),
         )
-        score, adjustments = apply_time_rules(blend(comps), mode, as_of.time(), cfg)
+        base = blend(comps)
+        applied = min(bonus, 100.0 - base)       # effective bonus after the 100 ceiling
+        pre = []
+        if applied > 0:
+            pre.append(Adjustment("confluence", "bonus", applied,
+                                  f"{len(families)} independent setup families active: "
+                                  f"{', '.join(families)}"))
+        score, adjustments = apply_time_rules(base + applied, mode, as_of.time(), cfg)
+        adjustments = pre + adjustments
+        category = categorize(score, cfg)
+        exclusions = avoid_reasons(ip.is_in_play, best, category)
         forced = []
-        if not ip.is_in_play:
+        if "not in play" in exclusions:
             forced.append(Reason("penalty", f"Not in play ({ip.reason}): category set to AVOID",
                                  {"is_in_play": False}))
-        elif best is not None and best.state is SetupState.FAILED:
+        if "best setup failed" in exclusions:
             forced.append(Reason("penalty", f"{best.name} failed: category set to AVOID",
                                  {"best_state": "FAILED"}))
+        if "score below NEUTRAL floor" in exclusions:
+            forced.append(Reason("penalty", "Score below the NEUTRAL floor: category AVOID",
+                                 {"category": "AVOID"}))
         setup_block = {
             "best": best.name if best else None,
             "best_state": best.state.value if best else "NONE",
-            "confluence_count": k,
+            "confluence_families": list(families),
+            "confluence_count": len(families),
+            "confluence_bonus": applied,
             "signals": [{"name": s.name, "state": s.state.value, "detail": s.detail}
                         for s in signals],
         }
         recs[mode] = Recommendation(
             symbol=inp.symbol, mode=mode, as_of=as_of.isoformat(), score=score,
-            category="AVOID" if forced else categorize(score, cfg),
+            category="AVOID" if exclusions else category,
             profile=profile(ip.is_in_play, best), components=comps,
             quantitative=_quantitative(sscore, ip, liq), setup=setup_block,
             market_context=market_block, sector_context=sector_unavailable(),
             qualitative=qualitative_unavailable(), adjustments=tuple(adjustments),
             reasons=_reasons(signals, ip, market, liq, adjustments, forced), data_quality=dq,
+            eligible_for_top_n=not exclusions, exclusion_reasons=exclusions,
         )
     return SymbolEvaluation(inp.symbol, recs, None, ip.is_in_play)
 
 
 def rank_recommendations(recs: Sequence[Recommendation]) -> list[Recommendation]:
-    """Score desc, then symbol asc (deterministic ties). Rank history
-    fields stay None until a later milestone maintains them."""
-    ordered = sorted(recs, key=lambda r: (-r.score, r.symbol))
-    return [replace(r, rank=i) for i, r in enumerate(ordered, 1)]
+    """Exclude AVOID, rank the rest by score desc then symbol asc
+    (deterministic ties). AVOID follows, unranked (rank None), kept for
+    transparency. Rank history fields stay None until a later milestone."""
+    key = lambda r: (-r.score, r.symbol)  # noqa: E731
+    eligible = sorted((r for r in recs if r.eligible_for_top_n), key=key)
+    avoid = sorted((r for r in recs if not r.eligible_for_top_n), key=key)
+    return [replace(r, rank=i) for i, r in enumerate(eligible, 1)] + \
+        [replace(r, rank=None) for r in avoid]

@@ -63,7 +63,7 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   the demo day runs end to end; LiveSource is unrun (no credentials).
 
 ### Tests
-151 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+165 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — unblocked 2026-09-27 (pandas 3.0.6, pyarrow 25.0.1, streamlit
@@ -78,12 +78,10 @@ Dashboard smoke-tested (AppTest headless + served on a local port).
   defensively (tick-age heartbeat, resubscribe on reconnect).
 - M1 is unvalidated against the real API (needs credentials in `.env`).
 
-### Open points from M6 (for the user)
-- Confluence bonus is a no-op under `min(100, best + 10k)` (a TRIGGERED
-  best is already 100); `confluence_count` is still reported.
-- Forced-AVOID stocks keep their numeric score, so they can hold high
-  ranks (hidden by the default category filter).
+### M6 follow-up (DECISIONS #15, done)
+Confluence counts independent setup families (+0/+2/+3/+5, max 5);
+AVOID candidates are scored but never ranked; state.json schema v3.
 
 ### Next task
-Resolve the two M6 open points, then M7: live Groww feed
+M7: live Groww feed
 + depth (needs credentials + live-price subscription).

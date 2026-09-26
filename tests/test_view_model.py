@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, time, timedelta
 
-from app.view_model import DISCLAIMER, banners, load_state, select, table_rows
+from app.view_model import DISCLAIMER, avoided, banners, load_state, select, table_rows
 from src.app.worker import write_state
 from tests.test_worker import GEN, context, run_tick
 from tests.fakes.replay_fixture import REPLAY_DAY
@@ -20,7 +20,7 @@ def test_load_missing_corrupt_and_unknown_version(tmp_path):
     state, err = load_state(bad)
     assert state is None and "unreadable" in err
     old = tmp_path / "old.json"
-    old.write_text(json.dumps({"schema_version": 1}))
+    old.write_text(json.dumps({"schema_version": 2}))
     state, err = load_state(old)
     assert state is None and "schema_version" in err
 
@@ -29,7 +29,7 @@ def test_load_valid_state(tmp_path):
     path = tmp_path / "state.json"
     write_state(path, real_state(tmp_path))
     state, err = load_state(path)
-    assert err is None and state["schema_version"] == 2
+    assert err is None and state["schema_version"] == 3
 
 
 def test_banners_demo_stale_and_disclaimer_last(tmp_path):
@@ -45,17 +45,29 @@ def test_banners_demo_stale_and_disclaimer_last(tmp_path):
 
 
 def rec(sym, rank, score, category):
-    return {"symbol": sym, "rank": rank, "score": score, "category": category}
+    return {"symbol": sym, "rank": rank, "score": score, "category": category,
+            "eligible_for_top_n": category != "AVOID"}
+
+
+RECS = [rec("C", 2, 55, "WATCH"), rec("A", 1, 85, "STRONG_CANDIDATE"),
+        rec("B", None, 95, "AVOID"), rec("D", 3, 40, "NEUTRAL")]
 
 
 def test_select_filters_orders_and_limits():
-    recs = [rec("C", 3, 55, "WATCH"), rec("A", 1, 85, "STRONG_CANDIDATE"),
-            rec("B", 2, 70, "AVOID"), rec("D", 4, 40, "NEUTRAL")]
-    got = select(recs, ("STRONG_CANDIDATE", "WATCH"), 0, 10)
+    got = select(RECS, ("STRONG_CANDIDATE", "WATCH"), 0, 10)
     assert [r["symbol"] for r in got] == ["A", "C"]
-    assert [r["symbol"] for r in select(recs, ("WATCH", "STRONG_CANDIDATE"), 60, 10)] == ["A"]
-    assert len(select(recs, ("STRONG_CANDIDATE", "WATCH", "NEUTRAL", "AVOID"), 0, 2)) == 2
+    assert [r["symbol"] for r in select(RECS, ("WATCH", "STRONG_CANDIDATE"), 60, 10)] == ["A"]
+    assert len(select(RECS, ("STRONG_CANDIDATE", "WATCH", "NEUTRAL"), 0, 2)) == 2
     assert select([], ("WATCH",), 0, 5) == []
+
+
+def test_avoid_never_in_top_n_even_if_requested():
+    got = select(RECS, ("STRONG_CANDIDATE", "WATCH", "NEUTRAL", "AVOID"), 0, 10)
+    assert "B" not in [r["symbol"] for r in got]
+
+
+def test_avoided_listed_separately_for_transparency():
+    assert [r["symbol"] for r in avoided(RECS)] == ["B"]
 
 
 def test_table_rows_columns_and_no_prices(tmp_path):
@@ -63,7 +75,7 @@ def test_table_rows_columns_and_no_prices(tmp_path):
     rows = table_rows(recs)
     assert list(rows[0]) == ["Rank", "Symbol", "Category", "Score", "Best Setup", "Setup State",
                              "RVOL", "In Play", "Market Context"]
-    assert rows[0]["Rank"] == 1
+    assert [row["Rank"] for row in rows] == [r["rank"] for r in recs]
 
 
 def test_dashboard_never_imports_broker_or_data_layers():

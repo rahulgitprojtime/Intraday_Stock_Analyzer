@@ -24,11 +24,15 @@ def context(root, **fixture):
 def test_tick_writes_schema_valid_ranked_state(tmp_path):
     state = run_tick(context(tmp_path), AS_OF, GEN)
     assert validate_state(state) == []
-    assert state["schema_version"] == 2 and state["source"] == "replay"
+    assert state["schema_version"] == 3 and state["source"] == "replay"
     assert state["universe_count"] == 2 and state["errors"] == []
     for mode in ("SCALP", "DAY"):
         recs = state["modes"][mode]
-        assert [r["rank"] for r in recs] == list(range(1, len(recs) + 1))
+        ranked = [r for r in recs if r["eligible_for_top_n"]]
+        assert [r["rank"] for r in ranked] == list(range(1, len(ranked) + 1))
+        avoid = [r for r in recs if not r["eligible_for_top_n"]]
+        assert all(r["rank"] is None and r["category"] == "AVOID" and r["exclusion_reasons"]
+                   for r in avoid)                        # kept for transparency
         assert all(r["data_quality"]["market_data_timestamp"] < state["as_of"] for r in recs)
     json.dumps(state)                                    # JSON-serializable
 
@@ -66,7 +70,7 @@ def test_all_excluded_is_still_valid_state(tmp_path):
 
 
 def test_validate_state_rejects_unknown_version():
-    assert "schema_version" in validate_state({"schema_version": 1})[0]
+    assert "schema_version" in validate_state({"schema_version": 2})[0]
 
 
 def run_cli(root, out, ticks="3"):

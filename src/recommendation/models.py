@@ -25,7 +25,7 @@ class Component:
 @dataclass(frozen=True)
 class Adjustment:
     name: str
-    kind: str                # "cap" | "penalty"
+    kind: str                # "cap" | "penalty" | "bonus"
     points: float            # signed change applied to the score
     reason: str
 
@@ -72,7 +72,9 @@ class Recommendation:
     adjustments: tuple[Adjustment, ...]
     reasons: tuple[Reason, ...]
     data_quality: DataQuality
-    rank: int | None = None
+    eligible_for_top_n: bool = True      # False ⇔ category AVOID (hard quality gate)
+    exclusion_reasons: tuple[str, ...] = ()
+    rank: int | None = None              # None for AVOID: never ranked
     previous_rank: int | None = None     # rank history: later milestone
     rank_change: int | None = None
     score_change: float | None = None

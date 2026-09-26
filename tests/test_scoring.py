@@ -9,6 +9,7 @@ from src.recommendation.scoring import (
     apply_time_rules,
     blend,
     categorize,
+    confluence,
     setup_score,
 )
 from src.utils.config import load_strategy
@@ -27,18 +28,46 @@ def test_state_points():
     assert setup_score([sig("A", S.EXTENDED)], CFG)[0] == 30
 
 
-def test_best_is_highest_state_and_confluence_capped():
+def test_best_is_highest_state():
     signals = [sig("A", S.FORMING)] + [sig(n, S.TRIGGERED) for n in "BCD"]
-    score, best, k = setup_score(signals, CFG)
+    score, best = setup_score(signals, CFG)
     assert best.name == "B" and score == 100
-    assert k == 2                         # 2 extra TRIGGERED, capped at confluence_max_extra
 
 
 def test_no_setup_and_failed_best():
-    assert setup_score([sig("A", S.NONE)], CFG) == (0.0, None, 0)
-    assert setup_score([], CFG) == (0.0, None, 0)
-    _, best, _ = setup_score([sig("A", S.NONE), sig("B", S.FAILED)], CFG)
+    assert setup_score([sig("A", S.NONE)], CFG) == (0.0, None)
+    assert setup_score([], CFG) == (0.0, None)
+    _, best = setup_score([sig("A", S.NONE), sig("B", S.FAILED)], CFG)
     assert best.name == "B"
+
+
+# --- confluence (independent setup families) -----------------------------------
+@pytest.mark.parametrize("names,bonus", [
+    ([], 0),
+    (["ORB5"], 0),                                           # one family is not confluence
+    (["ORB5", "VWAP_RECLAIM"], 2),
+    (["ORB5", "VWAP_RECLAIM", "EMA_PULLBACK"], 3),
+    (["ORB5", "VWAP_RECLAIM", "EMA_PULLBACK", "MOMENTUM_BURST"], 5),
+    (["ORB5", "VWAP_RECLAIM", "EMA_PULLBACK", "MOMENTUM_BURST", "RS_VS_NIFTY"], 5),  # cap
+])
+def test_confluence_bonus_table_and_cap(names, bonus):
+    families, got = confluence([sig(n, S.TRIGGERED) for n in names], CFG)
+    assert got == bonus and len(families) == len(names)
+
+
+def test_correlated_setups_in_one_family_count_once():
+    same_family = ["ORB15", "PDH", "GAP_AND_GO", "NARROW_CPR"]      # all price structure
+    families, bonus = confluence([sig(n, S.TRIGGERED) for n in same_family], CFG)
+    assert families == ("price_structure",) and bonus == 0
+    vwap_twice = [sig("VWAP_RECLAIM", S.TRIGGERED), sig("VWAP_PULLBACK", S.FORMING),
+                  sig("ORB15", S.TRIGGERED)]
+    assert confluence(vwap_twice, CFG) == (("price_structure", "vwap"), 2)
+
+
+def test_only_active_states_count_toward_confluence():
+    signals = [sig("ORB5", S.EXTENDED), sig("VWAP_RECLAIM", S.FAILED), sig("EMA_PULLBACK", S.NONE),
+               sig("MOMENTUM_BURST", S.FORMING)]
+    assert confluence(signals, CFG) == (("momentum",), 0)
 
 
 # --- blend ----------------------------------------------------------------------

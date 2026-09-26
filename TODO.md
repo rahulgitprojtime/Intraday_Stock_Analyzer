@@ -31,7 +31,7 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [x] Worker: ReplaySource/LiveSource, state.json v2, demo data script
 - [x] Streamlit dashboard + view_model (no price levels)
 - [x] Dashboard smoke run (AppTest headless + live server) after pandas/pyarrow unblocked
-- [ ] Decide: confluence bonus no-op; forced-AVOID ranking (see PROJECT_STATE)
+- [x] Confluence by setup family (max +5); AVOID excluded from ranking; schema v3 (DECISIONS #15)
 
 ## M7 — Live feed + depth (unlocks Scalp mode quality)
 - [ ] GrowwFeed wrapper: LTP/index/depth for top ~20; dedupe, reconnect, stale detection; tick velocity, spread, bid/ask imbalance

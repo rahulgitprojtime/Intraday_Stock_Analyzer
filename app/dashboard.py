@@ -17,8 +17,9 @@ sys.path.insert(0, str(ROOT))
 import streamlit as st  # noqa: E402
 
 from app.view_model import (  # noqa: E402
-    ALL_CATEGORIES,
     DEFAULT_CATEGORIES,
+    RANKABLE_CATEGORIES,
+    avoided,
     banners,
     load_state,
     select,
@@ -34,8 +35,10 @@ with st.sidebar:
     mode = st.radio("Mode", ["SCALP", "DAY"],
                     format_func=lambda m: "Scalp (1-min)" if m == "SCALP" else "Day (5-min)")
     top_n = st.selectbox("Top N", [5, 10, 20], index=1)
-    categories = st.multiselect("Categories", ALL_CATEGORIES, default=list(DEFAULT_CATEGORIES))
+    categories = st.multiselect("Categories", RANKABLE_CATEGORIES,
+                                default=list(DEFAULT_CATEGORIES))
     min_score = st.slider("Min score", 0, 100, 0)
+    show_avoid = st.checkbox("Show AVOID (not ranked, for transparency)", value=False)
 
 
 def _card(r: dict) -> None:
@@ -68,12 +71,17 @@ def render() -> None:
     st.caption(f"As of {state['as_of']} · source: {state['source']} · "
                f"in play: {state['in_play_count']}/{state['universe_count']}")
     recs = select(state["modes"][mode], categories, min_score, top_n)
-    if not recs:
+    if recs:
+        st.dataframe(table_rows(recs), hide_index=True, width="stretch")
+        for r in recs:
+            _card(r)
+    else:
         st.info("No candidates match the filters right now.")
-        return
-    st.dataframe(table_rows(recs), hide_index=True, width="stretch")
-    for r in recs:
-        _card(r)
+    if show_avoid:
+        st.subheader("AVOID - not ranked")
+        for r in avoided(state["modes"][mode]):
+            st.write(f"{r['symbol']} · raw score {r['score']:.1f} · "
+                     f"{', '.join(r['exclusion_reasons'])}")
 
 
 render()

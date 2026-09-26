@@ -17,7 +17,7 @@ from src.recommendation.schema import validate_state
 DISCLAIMER = ("Scores rank candidates; not a probability of profit. Not investment advice. "
               "No orders are placed.")
 STALE_AFTER_SECONDS = 120
-ALL_CATEGORIES = ("STRONG_CANDIDATE", "CANDIDATE", "WATCH", "NEUTRAL", "AVOID")
+RANKABLE_CATEGORIES = ("STRONG_CANDIDATE", "CANDIDATE", "WATCH", "NEUTRAL")
 DEFAULT_CATEGORIES = ("STRONG_CANDIDATE", "CANDIDATE", "WATCH")
 
 
@@ -55,9 +55,17 @@ def banners(state: dict, now: datetime) -> list[tuple[str, str]]:
 
 def select(recs: Sequence[dict], categories: Iterable[str], min_score: float,
            top_n: int) -> list[dict]:
+    """Top-N from rankable candidates only; AVOID never enters, even if asked."""
     cats = set(categories)
-    chosen = [r for r in recs if r["category"] in cats and r["score"] >= min_score]
+    chosen = [r for r in recs if r["eligible_for_top_n"] and r["category"] in cats
+              and r["score"] >= min_score]
     return sorted(chosen, key=lambda r: r["rank"])[:top_n]
+
+
+def avoided(recs: Sequence[dict]) -> list[dict]:
+    """AVOID candidates (scored, not rankable), highest raw score first."""
+    return sorted((r for r in recs if not r["eligible_for_top_n"]),
+                  key=lambda r: (-r["score"], r["symbol"]))
 
 
 def table_rows(recs: Sequence[dict]) -> list[dict]:

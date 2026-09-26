@@ -1,4 +1,11 @@
-from src.utils.config import load_settings, load_strategy, load_universe
+import pytest
+
+from src.utils.config import (
+    load_settings,
+    load_strategy,
+    load_universe,
+    validate_engine_weights,
+)
 
 
 def test_settings_has_no_trading_modes():
@@ -7,15 +14,28 @@ def test_settings_has_no_trading_modes():
     assert "live_trading_confirmed" not in settings
 
 
-def test_recommendation_weights_sum_to_one():
-    weights = load_strategy()["recommendation"]["weights"]
-    assert abs(sum(weights.values()) - 1.0) < 1e-9
+def test_engine_weights_are_m6_baseline_and_sum_to_one():
+    w = load_strategy()["engine"]["weights"]
+    assert set(w) == {"setup", "in_play", "market_context"}
+    assert abs(sum(w.values()) - 1.0) < 1e-9
 
 
-def test_strategy_weights_sum_to_100():
-    strategy = load_strategy()
-    weights = strategy["scoring"]["weights"]
-    assert sum(weights.values()) == 100
+def test_no_prebaked_future_weights():
+    s = load_strategy()
+    assert "scoring" not in s
+    assert "weights" not in s["recommendation"]
+
+
+@pytest.mark.parametrize(
+    "weights", [{}, {"setup": 0.5, "in_play": 0.4}, {"setup": 1.2, "in_play": -0.2}]
+)
+def test_validate_engine_weights_rejects_bad(weights):
+    with pytest.raises(ValueError):
+        validate_engine_weights(weights)
+
+
+def test_candle_staleness_setting():
+    assert load_settings()["candles"]["stale_after_seconds"] == 120
 
 
 def test_universe_loads():

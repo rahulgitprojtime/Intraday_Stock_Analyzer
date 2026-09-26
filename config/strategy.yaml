@@ -2,32 +2,38 @@
 # not tuned/optimized. See DECISIONS.md and Phase 11 of the spec: never
 # optimize weights on the full historical dataset.
 
-# Sub-weights inside the quantitative score (sum to 100).
-scoring:
-  weights:
-    trend: 25
-    momentum: 20
-    volume: 20
-    vwap: 15
-    market_context: 10
-    liquidity: 10
-  # Weights should sum to 100; validated at load time in src/utils (M6+).
-
-# Final Recommendation Score (0-100) blend. Starting defaults, not tuned.
-# Must sum to 1.0. The score is NOT a probability of profit.
-recommendation:
-  weights:
-    quantitative: 0.60
-    qualitative: 0.20
+# M6 baseline quantitative scoring model (DECISIONS #14). Temporary
+# engineering defaults, NOT claimed optimal; M10 validates. Weights exist
+# only for components that are implemented; future components (sector M8,
+# qualitative M9) get weights when they ship. Unavailable components are
+# excluded from the blend, never defaulted.
+engine:
+  weights:                 # positive, must sum to 1.0
+    setup: 0.55
+    in_play: 0.35
     market_context: 0.10
-    sector_context: 0.05
-    liquidity: 0.05
-  categories:              # min score for each analytical category
+  state_points: {TRIGGERED: 100, FORMING: 60, EXTENDED: 30, FAILED: 0, NONE: 0}
+  confluence_bonus: 10     # per extra TRIGGERED setup
+  confluence_max_extra: 2
+  market_ramp_pct: [-0.5, 0.5]   # NIFTY % since open -> 0..100
+  ext_atr_mult: {SCALP: 0.15, DAY: 0.30}
+  ext_fallback_pct: 0.5    # when daily ATR is unavailable
+  time_rules:              # initial time-of-day heuristics, unvalidated
+    opening_cap_until: "09:20"   # cap at WATCH before this
+    lunch_start: "11:30"
+    lunch_end: "13:30"
+    lunch_penalty: 10
+    day_cap_after: "14:45"       # DAY mode capped at WATCH
+    close_cap_after: "15:00"     # all modes capped at NEUTRAL
+
+# Analytical categories (min score). The score ranks candidates; it is NOT
+# a probability of profit.
+recommendation:
+  categories:
     STRONG_CANDIDATE: 80
     CANDIDATE: 65
     WATCH: 50
     NEUTRAL: 35            # below this -> AVOID
-  avoid_max_liquidity_score: 20   # below this, AVOID regardless of score
 
 indicators:
   ema_periods: [9, 20, 50]

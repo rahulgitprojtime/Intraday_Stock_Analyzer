@@ -24,17 +24,20 @@ def load_settings() -> dict:
     return load_yaml("settings.yaml")
 
 
+def validate_engine_weights(weights: dict) -> None:
+    """M6 blend weights: required, positive, summing to 1.0 (DECISIONS #14)."""
+    if not weights:
+        raise ValueError("strategy.yaml engine.weights is required")
+    bad = {k: v for k, v in weights.items() if not isinstance(v, (int, float)) or v <= 0}
+    if bad:
+        raise ValueError(f"engine weights must be positive numbers: {bad}")
+    if abs(sum(weights.values()) - 1.0) > 1e-9:
+        raise ValueError(f"engine weights must sum to 1.0, got {weights}")
+
+
 def load_strategy() -> dict:
     strategy = load_yaml("strategy.yaml")
-    weights = strategy.get("scoring", {}).get("weights", {})
-    total = sum(weights.values())
-    if weights and total != 100:
-        raise ValueError(
-            f"strategy.yaml scoring weights must sum to 100, got {total} ({weights})"
-        )
-    rec = strategy.get("recommendation", {}).get("weights", {})
-    if rec and abs(sum(rec.values()) - 1.0) > 1e-9:
-        raise ValueError(f"strategy.yaml recommendation weights must sum to 1.0, got {rec}")
+    validate_engine_weights(strategy.get("engine", {}).get("weights", {}))
     return strategy
 
 

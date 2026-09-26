@@ -219,3 +219,17 @@ M1 start: https://groww.in/trade-api/docs/python-sdk/annexures
 - Order placement fields (validity, product, order_type, transaction_type
   constants) are NOT needed: this is a recommendation-only product and
   never places orders (DECISIONS.md #8).
+
+## Verified against the live API (2026-09-27, growwapi 1.5.0)
+
+- SDK base exception is `BaseGrowwException` (not `GrowwBaseException`);
+  subclasses like `GrowwAPIRateLimitException`, `GrowwAPIAuthenticationException`
+  take **no constructor args**. `GrowwAPIException(msg, code)`. Feed
+  exceptions exist: `GrowwFeedException`, `GrowwFeedConnectionException`,
+  `GrowwFeedNotSubscribedException`.
+- `api_key` auth flow works (`get_access_token(api_key=, secret=)`).
+- Instrument CSV resolves RELIANCE (exchange_token 2885) and NIFTY (IDX).
+- On an account without a market-data subscription, LTP / OHLC / quote /
+  historical candles all return `GrowwAPIException: Access forbidden for this
+  request.` (403) while auth succeeds. Market data needs the subscription.
+- Installing growwapi 1.5.0 pins pandas to 2.3.x.

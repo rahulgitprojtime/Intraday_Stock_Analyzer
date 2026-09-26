@@ -69,7 +69,7 @@ def test_authenticate_missing_env_var_raises_authentication_error(monkeypatch):
 
 def test_authenticate_translates_sdk_auth_exception(monkeypatch):
     fake = install_fake_groww(monkeypatch)
-    fake.get_access_token_raises = GrowwAPIAuthenticationException("bad creds")
+    fake.get_access_token_raises = GrowwAPIAuthenticationException()  # real SDK: no args
     monkeypatch.setenv("GROWW_AUTH_MODE", "api_key")
     monkeypatch.setenv("GROWW_API_KEY", "k1")
     monkeypatch.setenv("GROWW_API_SECRET", "s1")
@@ -222,7 +222,7 @@ def test_rate_limit_is_retried_then_succeeds(monkeypatch):
     monkeypatch.setenv("GROWW_API_SECRET", "s1")
 
     fake.get_quote_raises_then_succeeds = [
-        GrowwAPIRateLimitException("slow down"),
+        GrowwAPIRateLimitException(),
         None,
     ]
     fake.get_quote_response = {
@@ -255,10 +255,10 @@ def test_rate_limit_exhausts_retries_and_raises(monkeypatch):
     monkeypatch.setenv("GROWW_API_SECRET", "s1")
 
     fake.get_quote_raises_then_succeeds = [
-        GrowwAPIRateLimitException("slow down"),
-        GrowwAPIRateLimitException("slow down"),
-        GrowwAPIRateLimitException("slow down"),
-        GrowwAPIRateLimitException("slow down"),
+        GrowwAPIRateLimitException(),
+        GrowwAPIRateLimitException(),
+        GrowwAPIRateLimitException(),
+        GrowwAPIRateLimitException(),
     ]
 
     import src.utils.retry as retry_module

@@ -34,3 +34,12 @@ def test_broker_interface_exposes_no_order_execution():
     banned = ("order", "position", "holding", "portfolio", "margin")
     names = [n.lower() for n in dir(BrokerAdapter)]
     assert not [n for n in names if any(b in n for b in banned)]
+
+
+def test_real_growwapi_sdk_is_detected_when_installed():
+    """Regression: a wrong exception name inside the guarded import made the
+    adapter report the installed SDK as missing."""
+    pytest.importorskip("growwapi")
+    from src.broker import groww
+
+    assert groww.GROWWAPI_INSTALLED is True

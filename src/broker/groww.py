@@ -47,7 +47,8 @@ from src.utils.retry import retry_call
 
 try:
     from growwapi import GrowwAPI
-    from growwapi.groww.exceptions import (
+    from growwapi.groww.exceptions import (  # names verified against growwapi 1.5.0
+        BaseGrowwException as GrowwBaseException,
         GrowwAPIAuthenticationException,
         GrowwAPIAuthorisationException,
         GrowwAPIBadRequestException,
@@ -55,7 +56,6 @@ try:
         GrowwAPINotFoundException,
         GrowwAPIRateLimitException,
         GrowwAPITimeoutException,
-        GrowwBaseException,
     )
 
     GROWWAPI_INSTALLED = True

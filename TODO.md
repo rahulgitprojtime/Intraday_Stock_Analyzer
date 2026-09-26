@@ -22,7 +22,7 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [x] Fixture-candle tests per setup (`tests/test_setups.py`)
 
 ## M5 — Stocks-in-play scanner
-- [ ] RVOL, gap %, ATR%, range expansion, relative strength → in-play score
+- [x] RVOL, gap %, ATR%, range expansion, relative strength → in-play score (`src/quantitative/in_play.py`)
 
 ## M6 — Recommendation engine + dashboard (MVP)
 - [ ] Score = best setup + in-play + context; categories; time-of-day rules; explanations

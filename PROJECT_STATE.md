@@ -12,7 +12,7 @@ by intraday traders (ORB, VWAP, PDH, CPR, EMA pullback, momentum burst),
 Scalp (1-min) and Day (5/15-min) modes, stocks-in-play pre-filter,
 time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 
-## Current milestone: M4 ✅ → next: M5 stocks-in-play scanner
+## Current milestone: M5 ✅ → next: M6 recommendation engine + dashboard MVP
 
 ### Completed
 - **M0** foundation: layered architecture, config, data models, `BrokerAdapter`.
@@ -48,9 +48,13 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   PDH breakout, VWAP reclaim, VWAP pullback, EMA9/20 pullback, narrow-CPR
   trend, gap-and-go, RS vs NIFTY, 1-min momentum burst) returning
   `SetupSignal` states. Conventions + default thresholds: DECISIONS #13.
+- **M5** `src/quantitative/in_play.py`: `score_in_play` (time-of-day RVOL,
+  gap-up %, ATR%, range expansion vs daily ATR, RS vs NIFTY → linear ramps
+  → weighted 0-100) with an RVOL floor gate; `rank_in_play`. Weights,
+  ramps, `min_score`, `min_rvol` in `strategy.yaml` `in_play:`.
 
 ### Tests
-71 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+78 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — keep core code stdlib-only until that's resolved.
@@ -64,5 +68,7 @@ venv — keep core code stdlib-only until that's resolved.
 - M1 is unvalidated against the real API (needs credentials in `.env`).
 
 ### Next task
-M5: stocks-in-play scanner — time-of-day RVOL, gap %, ATR%, range
-expansion, RS → in-play score gating which stocks run setup detection.
+M6: recommendation engine (best setup + in-play + context → score,
+category, time-of-day rules, explanation; `ext` from ATR) and a worker
+that writes state each minute; Streamlit dashboard reads it. No price
+levels on cards.

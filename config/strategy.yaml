@@ -43,3 +43,21 @@ rvol:
 
 regime:
   volatility_lookback_days: 20
+
+# Stocks-in-play scanner (M5). Each feature maps linearly to 0-100 between
+# its ramp bounds, then blends by weight (sum 100). Not tuned.
+in_play:
+  weights:
+    rvol: 35
+    gap: 15
+    atr_pct: 15
+    range_expansion: 15
+    rs: 20
+  ramps:
+    rvol: [1.0, 3.0]
+    gap: [0.0, 3.0]
+    atr_pct: [1.0, 4.0]
+    range_expansion: [0.3, 1.0]
+    rs: [0.0, 2.0]
+  min_score: 50
+  min_rvol: 1.5

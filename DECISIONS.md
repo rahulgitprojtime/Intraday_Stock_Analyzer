@@ -129,3 +129,21 @@ gap fill); RS trigger >= 0.5 pts vs NIFTY since open; momentum burst =
 body and volume >= 2x the prior 20-bar average, close in top quarter.
 All illustrative, not tuned — M10 validates. PDH breakout requires a
 cross; opening above PDH is gap-and-go territory, not PDH.
+
+### #14 — M6 extensible recommendation model; state schema v2 (2026-09-27, user-reviewed)
+Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
+- Final score = weighted blend over *available* score components
+  (`setup`, `in_play`, `market_context` in M6; 0.55/0.35/0.10 is a
+  temporary baseline, not optimal). Unavailable components (sector M8,
+  qualitative M9) are excluded, never defaulted — adding one never changes
+  the score. Future weights are set when a component ships; the old
+  pre-assigned `scoring.weights` / `recommendation.weights` blocks are removed.
+- Liquidity (universe.yaml filters) is an eligibility gate; ineligible,
+  stale or incomplete symbols are excluded from ranking, never scored as live.
+- `Recommendation` carries quantitative group sub-scores, market/sector/
+  qualitative blocks, adjustments, evidence-backed reasons, data_quality and
+  rank-stability fields; `null` = unavailable. No price fields.
+- Missing NIFTY → market_context unavailable (no neutral 50).
+- `state.json` schema_version 2 (v1 was an unreleased draft). Incompatible
+  changes increment the version and are logged here.
+- Time-of-day rules and all thresholds are unvalidated heuristics until M10.

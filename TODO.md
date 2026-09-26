@@ -24,14 +24,18 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 ## M5 — Stocks-in-play scanner
 - [x] RVOL, gap %, ATR%, range expansion, relative strength → in-play score (`src/quantitative/in_play.py`)
 
-## M6 — Recommendation engine + dashboard (MVP)
-- [ ] Score = best setup + in-play + context; categories; time-of-day rules; explanations
-- [ ] Worker writes state each minute; Streamlit reads it (top 5/10/20, candidate card, Scalp/Day toggle, filters). No price levels on cards.
+## M6 — Quantitative recommendation MVP (spec: docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md)
+- [x] Spec revision 2 (extensible model, schema v2) — awaiting approval
+- [ ] Implementation plan (after spec approval)
+- [ ] Engine (components blend, setup score, time heuristics, categories, profiles, reasons, data quality)
+- [ ] Liquidity eligibility + market context (NIFTY)
+- [ ] Worker: ReplaySource/LiveSource, state.json v2, demo data script
+- [ ] Streamlit dashboard + view_model (no price levels)
 
 ## M7 — Live feed + depth (unlocks Scalp mode quality)
 - [ ] GrowwFeed wrapper: LTP/index/depth for top ~20; dedupe, reconnect, stale detection; tick velocity, spread, bid/ask imbalance
 
-## M8 — Market + sector context (regime, sector map, sector RS)
-## M9 — Qualitative/news engine (sourced only; low weight in Scalp mode)
-## M10 — Validation: per-setup historical hit rate by time of day → weights
-## M11 — Performance · M12 — Final testing/security
+## M8 — Sector + market breadth + relative-strength context
+## M9 — Qualitative/news/catalyst engine (structured, sourced only)
+## M10 — Historical validation and weight/feature evaluation
+## M11 — Streamlit refinement · M12 — Performance/operational hardening

@@ -232,4 +232,14 @@ M1 start: https://groww.in/trade-api/docs/python-sdk/annexures
 - On an account without a market-data subscription, LTP / OHLC / quote /
   historical candles all return `GrowwAPIException: Access forbidden for this
   request.` (403) while auth succeeds. Market data needs the subscription.
+- With the subscription active: LTP, OHLC, quote (with depth) and 1-min
+  history all work.
+- 1-min history rows are `[ts, o, h, l, c, volume, oi]` (oi always null for
+  cash). Responses include **pre-open** rows 09:00-09:14 (stocks: null OHLC;
+  indices: values) and **post-close** rows 15:30-15:59. Index volume is always
+  null; a stock minute can have null volume. The adapter keeps only
+  09:15 <= t < 15:30, skips null-price rows, and maps null volume to 0.
+- In-session minutes can be missing entirely (RELIANCE: 1447 of 1500 over 4
+  sessions); downstream code must tolerate gaps.
+- `closing_price` in the history response was null.
 - Installing growwapi 1.5.0 pins pandas to 2.3.x.

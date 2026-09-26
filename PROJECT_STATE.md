@@ -63,7 +63,7 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   the demo day runs end to end; LiveSource is unrun (no credentials).
 
 ### Tests
-166 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+169 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — unblocked 2026-09-27 (pandas 3.0.6, pyarrow 25.0.1, streamlit
@@ -76,10 +76,10 @@ Dashboard smoke-tested (AppTest headless + served on a local port).
 - Sector is not in the instrument CSV; M7 needs a maintained sector map.
 - `GrowwFeed` reconnect behavior is undocumented; M3 must handle it
   defensively (tick-age heartbeat, resubscribe on reconnect).
-- M1 live-checked 2026-09-27 (`scripts/groww_smoke.py`): auth + instrument
-  resolve work; all market-data calls return 403 "Access forbidden" until the
-  account has a Groww market-data subscription. Fixed two growwapi 1.5.0
-  mismatches (see docs/groww_api_notes.md).
+- M1 live-checked 2026-09-27: `scripts/groww_smoke.py` passes 7/7 (auth,
+  resolve, LTP, OHLC, quote+depth, 1-min history stock + index). History
+  parsing fixed for real payloads (pre/post-session rows, null prices,
+  null index volume) — docs/groww_api_notes.md.
 
 ### M6 follow-up (DECISIONS #15, done)
 Confluence counts independent setup families (+0/+2/+3/+5, max 5);

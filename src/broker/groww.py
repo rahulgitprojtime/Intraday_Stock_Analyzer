@@ -39,6 +39,8 @@ from src.data.models import (
     Instrument,
     MarketDepth,
     OHLC,
+    SESSION_MINUTES,
+    SESSION_OPEN,
     Quote,
     Segment,
 )
@@ -240,6 +242,12 @@ class GrowwAdapter(BrokerAdapter):
             yield items[i : i + size]
 
     @staticmethod
+    def _in_regular_session(ts: datetime) -> bool:
+        """NSE continuous session 09:15 <= t < 15:30 (naive IST)."""
+        minute = ts.hour * 60 + ts.minute - (SESSION_OPEN.hour * 60 + SESSION_OPEN.minute)
+        return 0 <= minute < SESSION_MINUTES
+
+    @staticmethod
     def _parse_candle_timestamp(raw: str) -> datetime:
         # Docs' schema table says "yyyy-MM-dd HH:mm:ss"; the docs' own
         # example response uses a "T" separator instead. Handle both.
@@ -377,18 +385,25 @@ class GrowwAdapter(BrokerAdapter):
                 end_time=win_end.strftime("%Y-%m-%d %H:%M:%S"),
                 candle_interval=candle_interval,
             )
+            # Verified live (growwapi 1.5.0): rows are [ts, o, h, l, c, v, oi];
+            # pre-open (09:00-09:14) and post-close (15:30-15:59) rows are
+            # included, pre-open stock rows have null prices, and indices
+            # (and the odd stock minute) have null volume.
             for row in resp.get("candles", []):
                 ts_raw, o, h, l, c, v = row[0], row[1], row[2], row[3], row[4], row[5]
+                ts = self._parse_candle_timestamp(ts_raw)
+                if None in (o, h, l, c) or not self._in_regular_session(ts):
+                    continue
                 candles.append(
                     Candle(
                         instrument=request.instrument,
                         timeframe_minutes=interval,
-                        timestamp=self._parse_candle_timestamp(ts_raw),
+                        timestamp=ts,
                         open=float(o),
                         high=float(h),
                         low=float(l),
                         close=float(c),
-                        volume=int(v),
+                        volume=int(v) if v is not None else 0,
                         is_complete=True,
                     )
                 )

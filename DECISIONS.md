@@ -244,3 +244,30 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   fixed look-alike and word-form misses; rules remain illustrative and
   unvalidated (M10). Known gap: republished old stories (e.g. "Q1 results"
   in September) can't be told apart from a headline alone.
+
+### #20 — M10 paper trading / outcome evaluation, simulation only (2026-09-28, user-approved)
+- Narrows #8: simulated positions are allowed **for evaluating the
+  recommendation methodology**. Still no order/position/holdings API, no
+  order-style UI, no trading modes (a single `paper.yaml enabled: false`
+  switch; LIVE trading does not exist). `src/paper` never imports
+  `src/broker` (tested).
+- #11 still holds for recommendation cards (no levels). Stop/target exist
+  only in the paper journal and the separately labelled simulation views.
+- Conventions (config/paper.yaml, unoptimised starting values): entry =
+  existing recommendation with category ≥ CANDIDATE, score ≥ 65, best setup
+  TRIGGERED, top 10, max 3 open, 1 trade/symbol/day, none after 15:00;
+  fill at the next bar's OPEN + 5 bps; stop = fill − 0.25 × daily ATR (0.6%
+  fallback), target = 1.5R, both fixed at entry; gap below stop fills at the
+  open; stop and target in one bar → STOP_LOSS; 15:20 square-off at the last
+  closed bar's close; 0.05% round-trip charges; 10 shares fixed.
+- Journal: append-only JSONL (ENTRY / EXIT / MISSED); entries immutable;
+  trade id = hash(run, day, symbol, mode, signal time, strategy_version);
+  every record carries strategy_version, config hash, git commit.
+- Replay: the simulator runs on the worker's clock with bars closed ≤ T
+  only; a poison test proves later bars cannot change earlier decisions or
+  fills. Historical news does not exist → NOT_AVAILABLE, never backfilled.
+- First real run (2026-09-25, default policy): NO TRADES — max score all
+  day 64.99; every stock capped at WATCH (not in play, #16). Recorded as a
+  finding; the policy was not loosened to manufacture trades.
+- Known biases stated in reports/docs: survivorship (today's 25 large
+  caps), no historical spread/depth, small samples (< 30 → warning).

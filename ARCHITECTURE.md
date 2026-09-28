@@ -16,19 +16,22 @@ src/data/           models, universe resolution, live feed worker,
 src/indicators/     pure indicator math (EMA, VWAP, RSI, ATR, ADX, RVOL, ...)
 src/quantitative/   features -> quantitative score (deterministic)
 src/market/         market context (NIFTY in M6); regime + sector strength (M8)
-src/qualitative/    news retrieval -> normalization -> LLM structuring
-                    (sourced claims only; else NO_RELEVANT_INFORMATION)
+src/qualitative/    Google News RSS -> deterministic headline-context rules
+                    (sourced headlines only; else NO_RELEVANT_INFORMATION)
         v
 src/recommendation/ component blend -> time heuristics -> category -> rank ->
-                    evidence-backed reasons; state.json schema (v2)
+                    evidence-backed reasons + prerequisites; state.json (v5)
         v
 src/storage/        intraday 1-min CSV candle cache (DECISIONS #12)
 src/app/            worker: ReplaySource | LiveSource -> engine -> state.json
         v
 app/dashboard.py    Streamlit <- reads data/processed/state.json only
                     (app/view_model.py: stdlib, tested)
-src/backtest/       methodology validation only (no look-ahead); reuses the
-                    same quantitative/recommendation code paths
+src/paper/          M10 SIMULATION ONLY: ranked recommendations + closed bars
+                    -> entry policy -> virtual position (next-bar-open fill,
+                    fixed stop/target) -> append-only journal -> reports.
+                    Driven by the same worker tick (scripts/paper_replay.py);
+                    never imports src/broker (DECISIONS #20)
 ```
 
 Runtime split: a **live data worker** process owns the Groww feed and REST
@@ -40,7 +43,8 @@ polling and writes feature/recommendation state; Streamlit only reads it.
 - Streamlit never holds the feed connection or calls broker methods.
 - No LLM computes any number; Python does all indicator/score math.
 - Stale critical data => the stock is not recommended.
-- `src/backtest/` must not reimplement indicator/scoring logic.
+- `src/paper/` must not reimplement indicator/scoring logic, never sees a
+  bar after the current tick, and has no order functionality (tested).
 
 ## Config
 

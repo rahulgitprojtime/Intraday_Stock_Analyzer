@@ -53,5 +53,15 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [x] Live-checked on all 25 stocks; rules hardened (look-alikes, case, clauses, word forms)
 - [ ] Optional: keyed source with snippets/sentiment (Marketaux or Drishti) behind the same NewsSource
 - [ ] Review misclassified headlines weekly; extend config/news.yaml
-## M10 — Historical validation and weight/feature evaluation
+## M10 — Paper trading & outcome evaluation (DECISIONS #20)
+### M10a ✅ replay simulation
+- [x] Entry policy, fixed stop/target, simulator (fills, exits, costs, missed signals), append-only journal, metrics, daily report, replay runner
+- [x] Tests: policy, risk, exits incl. same-bar ambiguity, accounting, journal immutability, determinism, look-ahead poison, order safety
+- [x] First real run 2026-09-25: NO TRADES (max score 64.99, all capped at WATCH)
+### M10b — more data + multi-day evaluation
+- [ ] Fetch 6-12 months of 1-min history (35 symbols) via fetch_replay_data.py; run paper_replay --all
+- [ ] Multi-day aggregate report (equity curve, drawdown, breakdowns with sample sizes); dashboard PAPER TRADING / SIMULATION + M10 Evaluation sections
+### M10c — experiments + live paper
+- [ ] Baseline vs experiment (config overrides), chronological train/validation/test, walk-forward; component ablation
+- [ ] Live paper trading on the running worker (paper.yaml enabled), after smoke tests + replay checks
 ## M11 — Streamlit refinement · M12 — Performance/operational hardening

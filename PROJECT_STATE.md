@@ -1,6 +1,6 @@
 # PROJECT_STATE.md
 
-Last updated: 2026-09-27
+Last updated: 2026-09-28
 
 ## Product
 Live intraday **recommendation** dashboard (NSE cash equities). Groww is a
@@ -86,5 +86,6 @@ Confluence counts independent setup families (+0/+2/+3/+5, max 5);
 AVOID candidates are scored but never ranked; state.json schema v3.
 
 ### Next task
-Monday 2026-09-28: real-day replay (see TODO), then M7: live Groww feed
+Real-day replay: `scripts/fetch_replay_data.py` ready (tested with a stub);
+live run blocked 2026-09-28 by a Groww auth permission error (see TODO). Then M7: live Groww feed
 + depth (needs credentials + live-price subscription).

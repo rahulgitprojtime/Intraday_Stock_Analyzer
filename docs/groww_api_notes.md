@@ -243,3 +243,7 @@ M1 start: https://groww.in/trade-api/docs/python-sdk/annexures
   sessions); downstream code must tolerate gaps.
 - `closing_price` in the history response was null.
 - Installing growwapi 1.5.0 pins pandas to 2.3.x.
+
+- 2026-09-28: key+secret `get_access_token` raised `GrowwAPIAuthorisationException`
+  ("Your API token does not have the required permissions") with the same
+  `.env` that passed the smoke test on 2026-09-27. Cause not yet known.

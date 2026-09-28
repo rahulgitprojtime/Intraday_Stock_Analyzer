@@ -28,3 +28,4 @@ data/cache/*
 .idea/
 .vscode/
 data/demo/
+data/replay/

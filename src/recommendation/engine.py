@@ -17,6 +17,16 @@ from src.data.candles import resample
 from src.data.models import Candle
 from src.market.context import MarketContext
 from src.quantitative.daily_prep import DailyPrep
+from src.quantitative.groups import (
+    liquidity_group,
+    market_group,
+    momentum_group,
+    news_group,
+    price_group,
+    sector_group,
+    setup_group,
+    volume_group,
+)
 from src.quantitative.in_play import InPlayConfig, InPlayResult, score_in_play
 from src.quantitative.liquidity import Liquidity, LiquidityHistory, evaluate_liquidity
 from src.quantitative.microstructure import SymbolFeed
@@ -71,6 +81,7 @@ class SymbolInputs:
     feed: SymbolFeed | None = None      # live feed metrics (M7); None in replay/stale
     sector: dict | None = None          # sector_context block (M8); None → unavailable
     news: dict | None = None            # news verdict (M9); None → not checked (replay)
+    bank_market: MarketContext | None = None   # BANK NIFTY, only for bank/finance stocks (M12)
 
 
 @dataclass(frozen=True)
@@ -214,7 +225,6 @@ def evaluate_symbol(
 
     ip = score_in_play(inp.symbol, bars, inp.prep, inp.volume_curve, inp.index_bars, in_play_cfg)
     sector = inp.sector or sector_unavailable()
-    sector_ok = sector["status"] == AVAILABLE and sector["sector_score"] is not None
     market_block = {"status": market.status, "score": market.score, "source": market.source,
                     "nifty_change_pct": market.nifty_change_pct}
     recs = {}
@@ -223,69 +233,27 @@ def evaluate_symbol(
                              extension(mode, inp.prep, cfg), as_of)
         sscore, best = setup_score(signals, cfg)
         families, bonus = confluence(signals, cfg)
-        w = cfg.weights.get
-        micro = inp.feed.micro_score if (mode == "SCALP" and inp.feed) else None
-        comps = (
-            Component("setup", sscore, w("setup"), AVAILABLE),
-            Component("in_play", ip.score, w("in_play"), AVAILABLE),
-            Component("market_context", market.score, w("market_context"), market.status),
-            Component("microstructure", micro, w("microstructure") if micro is not None else None,
-                      AVAILABLE if micro is not None else UNAVAILABLE),
-            Component("liquidity", liq.score, w("liquidity"),
-                      AVAILABLE if liq.score is not None else UNAVAILABLE),
-            Component("sector_context", sector["sector_score"] if sector_ok else None,
-                      w("sector_context") if sector_ok else None,
-                      AVAILABLE if sector_ok else UNAVAILABLE),
-            Component("qualitative", None, w("qualitative"), UNAVAILABLE),
+        # M12 (DECISIONS #22): one transparent score = weighted average of the
+        # eight groups that have data. Weak sector, negative news or low
+        # volume simply lower their group; no special caps.
+        mode_bars = bars if mode == "SCALP" else [c for c in resample(bars, 5, now=as_of)
+                                                   if c.is_complete]
+        groups = (
+            price_group(bars, inp.prep, ip.range_expansion),
+            volume_group(ip.rvol, bars),
+            momentum_group(mode_bars, 1.0 if mode == "SCALP" else 2.0),
+            setup_group(sscore, bonus),
+            market_group(market, inp.index_bars, inp.bank_market),
+            sector_group(sector),
+            liquidity_group(liq, inp.feed, mode),
+            news_group(inp.news),
         )
-        base = blend(comps)
-        applied = min(bonus, 100.0 - base)       # effective bonus after the 100 ceiling
-        pre = []
-        if applied > 0:
-            pre.append(Adjustment("confluence", "bonus", applied,
-                                  f"{len(families)} independent setup families active: "
-                                  f"{', '.join(families)}"))
-        news_verdict = (inp.news or {}).get("verdict")
-        if news_verdict == "POSITIVE":
-            nb = min(cfg.news_positive_bonus, 100.0 - base - applied)
-            if nb > 0:
-                applied += nb
-                pre.append(Adjustment("news_positive", "bonus", nb,
-                                      "Recent upward news catalyst (credibility)"))
-        score, adjustments = apply_time_rules(base + applied, mode, as_of.time(), cfg)
-        adjustments = pre + adjustments
+        w = cfg.weights.get
+        comps = tuple(Component(g.name, g.value, w(g.name) if g.value is not None else None,
+                                AVAILABLE if g.value is not None else UNAVAILABLE)
+                      for g in groups)
+        score, adjustments = apply_time_rules(blend(comps), mode, as_of.time(), cfg)
         forced = []
-        if not ip.is_in_play:
-            n = len(adjustments)
-            score = cap_score(score, cfg.categories["CANDIDATE"] - 0.01, "not_in_play",
-                              f"Not in play ({ip.reason}): capped at WATCH", adjustments)
-            if len(adjustments) == n:        # cap not binding: still say why it can't rise
-                forced.append(Reason("penalty", f"Not in play ({ip.reason}): at most WATCH",
-                                     {"is_in_play": False}))
-        if sector["verdict"] == "WEAK":
-            n = len(adjustments)
-            score = cap_score(score, cfg.categories["CANDIDATE"] - 0.01, "sector_weak",
-                              f"Sector weak ({sector['reason']}): capped at WATCH", adjustments)
-            if len(adjustments) == n:
-                forced.append(Reason("penalty", f"Sector weak ({sector['reason']}): at most WATCH",
-                                     {"verdict": "WEAK"}))
-            pen = min(cfg.sector_weak_penalty, score)     # after caps: ranks below capped peers
-            if pen > 0:
-                score -= pen
-                adjustments.append(Adjustment("sector_weak_penalty", "penalty", -pen,
-                                              "Sector weak: deprioritized"))
-        if news_verdict == "NEGATIVE":
-            n = len(adjustments)
-            score = cap_score(score, cfg.categories["CANDIDATE"] - 0.01, "news_negative",
-                              "Recent downward news: capped at WATCH", adjustments)
-            if len(adjustments) == n:
-                forced.append(Reason("penalty", "Recent downward news: at most WATCH",
-                                     {"verdict": "NEGATIVE"}))
-            pen = min(cfg.news_negative_penalty, score)
-            if pen > 0:
-                score -= pen
-                adjustments.append(Adjustment("news_negative_penalty", "penalty", -pen,
-                                              "Recent downward news: deprioritized"))
         category = categorize(score, cfg)
         exclusions = avoid_reasons(best, category)
         checklist, summary = build_checklist(best, ip, liq, sector, market, inp.news)
@@ -300,7 +268,7 @@ def evaluate_symbol(
             "best_state": best.state.value if best else "NONE",
             "confluence_families": list(families),
             "confluence_count": len(families),
-            "confluence_bonus": applied,
+            "confluence_bonus": bonus,
             "signals": [{"name": s.name, "state": s.state.value, "detail": s.detail}
                         for s in signals],
         }
@@ -308,7 +276,9 @@ def evaluate_symbol(
             symbol=inp.symbol, mode=mode, as_of=as_of.isoformat(), score=score,
             category="AVOID" if exclusions else category,
             profile=profile(ip.is_in_play, best), components=comps,
-            quantitative=_quantitative(sscore, ip, liq, inp.feed), setup=setup_block,
+            quantitative=_quantitative(sscore, ip, liq, inp.feed) | {
+                "groups": {g.name: {"value": g.value, "parts": g.parts} for g in groups}},
+            setup=setup_block,
             market_context=market_block, sector_context=sector,
             qualitative=inp.news or qualitative_unavailable(), adjustments=tuple(adjustments),
             reasons=_reasons(signals, ip, market, liq, adjustments,

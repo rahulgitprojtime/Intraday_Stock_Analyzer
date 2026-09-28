@@ -59,7 +59,7 @@ def _last(series):
 def price_group(bars: Sequence[Candle], prep: DailyPrep | None,
                 range_expansion: float | None) -> GroupScore:
     if not bars:
-        return _group("price", {})
+        return _group("movement", {})
     close = bars[-1].close
     high, low = max(b.high for b in bars), min(b.low for b in bars)
     prev = prep.prev_close if prep else None
@@ -76,7 +76,7 @@ def price_group(bars: Sequence[Candle], prep: DailyPrep | None,
         structure = 30.0
     else:
         structure = 0.0
-    return _group("price", {"change": _ramp(change, 0, 3), "range": _ramp(range_expansion, 0.3, 1.0),
+    return _group("movement", {"change": _ramp(change, 0, 3), "range": _ramp(range_expansion, 0.3, 1.0),
                             "position": _ramp(pos, 0.5, 1.0), "vwap": _ramp(vwap_dist, 0, 1),
                             "structure": structure})
 

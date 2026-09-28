@@ -106,7 +106,7 @@ def test_future_components_are_unavailable_not_fabricated():
     assert q["momentum_score"] is None and q["trend_score"] is None
     assert q["liquidity"]["spread_pct"] is None
     comps = {c.name: c for c in rec.components}
-    assert comps["sector_context"].value is None and comps["qualitative"].value is None
+    assert comps["sector"].value is None and comps["news"].value is None
 
 
 def test_score_is_blend_of_available_components_plus_adjustments():
@@ -133,19 +133,20 @@ def test_illiquid_excluded():
     assert ev.recommendations == {} and ev.excluded_reason.startswith("liquidity")
 
 
-def test_not_in_play_capped_at_watch_but_rankable():
-    rec = evaluate(trend_bars(vol=50)).recommendations["DAY"]
-    assert rec.profile.startswith("NOT_IN_PLAY")
-    assert rec.category not in ("STRONG_CANDIDATE", "CANDIDATE")
-    assert rec.score < CFG.categories["CANDIDATE"]
-    assert "not in play" not in rec.exclusion_reasons
-    assert any(r.kind == "penalty" and "Not in play" in r.text for r in rec.reasons)
+def test_low_volume_lowers_the_volume_group_without_a_cap():
+    """M12: no special 'not in play' cap; weak volume just scores low."""
+    quiet = evaluate(trend_bars(vol=50)).recommendations["DAY"]
+    busy = evaluate().recommendations["DAY"]
+    assert quiet.profile.startswith("NOT_IN_PLAY") and quiet.eligible_for_top_n
+    assert comp(quiet, "volume").value < comp(busy, "volume").value
+    assert quiet.score < busy.score
+    assert not [a for a in quiet.adjustments if a.name == "not_in_play"]
 
 
 def test_market_unavailable_excluded_from_blend():
     rec = evaluate(market=MarketContext("unavailable", None, None)).recommendations["SCALP"]
-    comps = {c.name: c for c in rec.components}
-    assert comps["market_context"].status == "unavailable"
+    parts = rec.quantitative["groups"]["market"]["parts"]
+    assert parts["nifty"] is None                      # regime from index bars may remain
     assert rec.market_context["score"] is None
 
 
@@ -226,12 +227,12 @@ def test_confluence_changes_final_score():
     ip_all = replace(IP_CFG, min_score=0.0, min_rvol=0.0)    # keep the WATCH cap out of the way
     rec = evaluate(breakout_bars(), sym="BRK", ip_cfg=ip_all).recommendations["SCALP"]
     assert len(rec.setup["confluence_families"]) >= 2
-    bonus = next(a for a in rec.adjustments if a.name == "confluence")
-    assert bonus.kind == "bonus" and 0 < bonus.points <= 5
+    bonus = rec.setup["confluence_bonus"]
+    assert 0 < bonus <= 5
     plain = evaluate(breakout_bars(), sym="BRK", cfg=replace(CFG, confluence_bonus={}),
                      ip_cfg=ip_all).recommendations["SCALP"]
-    assert rec.score == pytest.approx(plain.score + bonus.points)
-    assert any(r.kind == "setup" and "families" in r.text for r in rec.reasons)
+    assert comp(rec, "setup").value == min(100, comp(plain, "setup").value + bonus)
+    assert rec.score >= plain.score                    # confluence lives in the setup group
 
 
 FEED = SymbolFeed(spread_pct=0.04, imbalance=0.32, tick_velocity=1.8, micro_score=80.0,
@@ -245,16 +246,16 @@ def comp(rec, name):
 def test_microstructure_component_is_scalp_only():
     ev = evaluate(feed=FEED)
     scalp, day = ev.recommendations["SCALP"], ev.recommendations["DAY"]
-    assert comp(scalp, "microstructure").status == "available"
-    assert comp(scalp, "microstructure").value == 80.0
-    assert comp(day, "microstructure").status == "unavailable"
+    micro = lambda r: r.quantitative["groups"]["liquidity"]["parts"]["microstructure"]  # noqa: E731
+    assert micro(scalp) == 80.0 and micro(day) is None
     baseline = evaluate().recommendations["DAY"]
-    assert day.score == baseline.score and day.components == baseline.components
+    assert comp(day, "liquidity").value is not None
+    assert day.quantitative["groups"]["momentum"] == baseline.quantitative["groups"]["momentum"]
 
 
 def test_no_feed_leaves_component_unavailable():
     scalp = evaluate().recommendations["SCALP"]
-    assert comp(scalp, "microstructure").status == "unavailable"
+    assert scalp.quantitative["groups"]["liquidity"]["parts"]["microstructure"] is None
     assert scalp.quantitative["microstructure"] is None
 
 
@@ -300,16 +301,18 @@ def test_confirmed_sector_outranks_neutral_and_is_reported():
     for mode in MODES:
         c, n = conf.recommendations[mode], neut.recommendations[mode]
         assert c.score > n.score
-        assert comp(c, "sector_context").status == "available"
+        assert comp(c, "sector").status == "available"
         assert c.sector_context["verdict"] == "CONFIRMED"
 
 
-def test_weak_sector_caps_at_watch_but_stays_rankable():
-    rec = evaluate(sector=sector_block("WEAK", 10.0, -0.4), ip_cfg=IP_ALL).recommendations["DAY"]
-    assert rec.score < CFG.categories["CANDIDATE"] and rec.eligible_for_top_n
-    assert any(r.kind == "penalty" and "Sector weak" in r.text for r in rec.reasons)
-    pen = next(a for a in rec.adjustments if a.name == "sector_weak_penalty")
-    assert pen.kind == "penalty" and pen.points == -CFG.sector_weak_penalty
+def test_weak_sector_lowers_the_sector_group_and_stays_rankable():
+    """M12: a weak sector scores low in its group; no special cap or penalty."""
+    weak = evaluate(sector=sector_block("WEAK", 10.0, -0.4), ip_cfg=IP_ALL).recommendations["DAY"]
+    conf = evaluate(sector=sector_block("CONFIRMED", 90.0, 0.4),
+                    ip_cfg=IP_ALL).recommendations["DAY"]
+    assert comp(weak, "sector").value < comp(conf, "sector").value
+    assert weak.score < conf.score and weak.eligible_for_top_n
+    assert not [a for a in weak.adjustments if a.name.startswith("sector_weak")]
 
 
 def test_weak_sector_ranks_below_capped_peers_on_a_quiet_day():
@@ -332,7 +335,7 @@ def test_ties_at_a_cap_break_by_pre_cap_score_not_symbol():
 
 def test_unavailable_sector_no_component_no_cap():
     base = evaluate(ip_cfg=IP_ALL).recommendations["DAY"]
-    assert comp(base, "sector_context").status == "unavailable"
+    assert comp(base, "sector").status == "unavailable"
     assert base.sector_context["verdict"] == "UNAVAILABLE"
     assert not any("Sector weak" in r.text for r in base.reasons)
 
@@ -378,20 +381,19 @@ def news_block(verdict, direction="UP", title="HOT bags Rs 900 crore order from 
 def test_positive_news_adds_credibility_bonus_and_passes_check():
     base = evaluate(ip_cfg=IP_ALL).recommendations["DAY"]
     rec = evaluate(ip_cfg=IP_ALL, news=news_block("POSITIVE")).recommendations["DAY"]
-    bonus = next(a for a in rec.adjustments if a.name == "news_positive")
-    assert bonus.kind == "bonus" and 0 < bonus.points <= CFG.news_positive_bonus
+    assert comp(rec, "news").value == 100 and comp(base, "news").value is None
     assert rec.score >= base.score and rec.qualitative["verdict"] == "POSITIVE"
     n = checks(rec)["news"]
     assert n["status"] == "PASS"
     assert n["detail"] == "upward catalyst: 'HOT bags Rs 900 crore order from NHAI' (Mint +1 outlet, 09:40)"
 
 
-def test_negative_news_caps_and_penalizes_after_caps():
+def test_negative_news_scores_zero_in_its_group_without_a_cap():
+    base = evaluate(ip_cfg=IP_ALL).recommendations["DAY"]
     rec = evaluate(ip_cfg=IP_ALL, news=news_block("NEGATIVE", "DOWN",
                                                   "Citi cuts HOT target")).recommendations["DAY"]
-    assert rec.score < CFG.categories["CANDIDATE"] and rec.eligible_for_top_n
-    assert any(a.name == "news_negative_penalty" and a.points == -CFG.news_negative_penalty
-               for a in rec.adjustments)
+    assert comp(rec, "news").value == 0 and rec.score <= base.score and rec.eligible_for_top_n
+    assert not [a for a in rec.adjustments if a.name.startswith("news_")]
     assert checks(rec)["news"]["status"] == "FAIL"
     assert "downward" in checks(rec)["news"]["detail"]
 

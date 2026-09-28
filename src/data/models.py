@@ -73,6 +73,7 @@ class Quote:
     day_change_pct: float
     depth: MarketDepth | None = None
     as_of: datetime | None = None
+    average_price: float | None = None   # today's volume-weighted average (VWAP); None off-hours
 
 
 @dataclass(frozen=True)

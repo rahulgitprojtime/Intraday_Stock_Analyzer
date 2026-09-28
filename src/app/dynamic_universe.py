@@ -59,6 +59,7 @@ class DynamicUniverse:
             c = self._ranked.get(inst.trading_symbol)
             active.append({"symbol": inst.trading_symbol,
                            "volume_change": round(c.volume_change, 4) if c else None,
-                           "day_change_pct": round(c.day_change_pct, 4) if c else None})
+                           "day_change_pct": round(c.day_change_pct, 4) if c else None,
+                           "scan_score": round(c.score, 2) if c else None})
         return {"source": "volume_scan", "top_n": self.active_set.top_n,
                 **self.scanner.status(), "active": active}

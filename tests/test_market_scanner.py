@@ -53,7 +53,7 @@ def scanner(tmp_path, adapter, syms=("AAA", "BBB", "CCC", "THIN"), sleeps=None):
 def test_config_from_universe_yaml():
     c = ScannerConfig.from_dict(load_universe()["scan"])
     assert (c.top_n, c.min_stay_minutes, c.calls_per_minute, c.stats_sessions,
-            c.prep_calls_per_minute) == (25, 10, 200, 20, 150)
+            c.prep_calls_per_minute) == (50, 10, 200, 20, 150)
 
 
 def test_failed_fetches_are_never_cached_and_retried_next_time(tmp_path):
@@ -117,3 +117,17 @@ def test_scan_record_appends_top_n(tmp_path):
     rows = [json.loads(x) for x in (tmp_path / "scans" / "2026-09-28.jsonl").read_text().splitlines()]
     assert rows[0]["at"] == NOW.isoformat() and rows[0]["active"] == ["AAA", "BBB"]
     assert [r["symbol"] for r in rows[0]["top"]][:2] == ["AAA", "BBB"]
+
+
+def test_sweep_keeps_quote_shape_and_previous_volume_for_acceleration(tmp_path):
+    ad = FakeAdapter(today_vol={"AAA": 1_000_000})
+    s = scanner(tmp_path, ad, syms=("AAA",))
+    s.prepare(TODAY)
+    s.sweep_step(1, NOW)
+    ad.today_vol["AAA"] = 1_300_000
+    s.sweep_step(1, NOW + timedelta(minutes=3))
+    q = s._quotes["AAA"]
+    assert (q["volume"], q["prev_volume"], q["prev_at"]) == (1_300_000, 1_000_000, NOW)
+    assert {"open", "high", "low", "average_price", "at"} <= set(q)
+    c = s.ranked(NOW + timedelta(minutes=3))[0]
+    assert c.parts["volume"]["acceleration"] is not None

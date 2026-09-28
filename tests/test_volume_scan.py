@@ -65,7 +65,7 @@ def test_rank_by_volume_change_long_only_and_liquidity():
     assert ranked[0].day_change_pct == pytest.approx(1.0)
     both = rank_volume_change(quotes, st, ScanFilters(20.0, 500_000, 5e7, long_only=False), at,
                               CURVE)
-    assert both[0].symbol == "DOWN9X"                   # only the long-only filter removed it
+    assert "DOWN9X" in [c.symbol for c in both]          # only the long-only filter removed it
 
 
 def test_missing_stats_or_quote_is_skipped_not_guessed():
@@ -100,3 +100,51 @@ def test_market_curve_file_is_a_monotone_fraction():
     assert len(curve) == 375 and curve[-1] == pytest.approx(1.0)
     assert all(b >= a for a, b in zip(curve, curve[1:]))
     assert 0 < curve[0] < 0.1                            # opening minute carries a real share
+
+
+def daily_hlc(sym, rows, end=TODAY - timedelta(days=1)):
+    inst = Instrument(sym, Exchange.NSE, Segment.CASH)
+    out, d = [], end
+    for h, lo, c, v in reversed(rows):
+        out.append(Candle(inst, 1440, datetime.combine(d, time()), None, h, lo, c, v))
+        d -= timedelta(days=1)
+    return list(reversed(out))
+
+
+def test_daily_stats_atr_uses_high_low_close_even_without_opens():
+    s = daily_stats("AAA", daily_hlc("AAA", [(102, 98, 100, 1_000_000)] * 20), TODAY, 20)
+    assert s.atr == pytest.approx(4.0)
+
+
+from src.quantitative.volume_scan import PRESCORE_WEIGHTS, prescore  # noqa: E402
+
+
+def test_prescore_groups_from_a_quote():
+    st = daily_stats("AAA", daily_hlc("AAA", [(102, 98, 100, 1_000_000)] * 20), TODAY, 20)
+    at = datetime(2026, 9, 28, 12, 22)
+    q = {"symbol": "AAA", "volume": 2_000_000, "last_price": 103.0, "open": 100.0,
+         "high": 103.5, "low": 99.5, "average_price": 102.0,
+         "prev_volume": 1_800_000, "prev_at": at - timedelta(minutes=3), "at": at}
+    score, parts = prescore(q, st, CURVE)
+    assert parts["movement"]["change"] == pytest.approx(100)          # +3% vs prev close
+    assert parts["movement"]["range"] == pytest.approx(100)           # 4.0 range / 4.0 ATR
+    assert parts["movement"]["position"] == pytest.approx((3.5 / 4 - 0.5) / 0.5 * 100)
+    assert parts["movement"]["vwap"] == pytest.approx(98.04, abs=0.1)  # +0.98% above VWAP
+    rate_recent, rate_day = 200_000 / 3, 2_000_000 / 187
+    assert parts["volume"]["acceleration"] == pytest.approx(
+        min(100, (rate_recent / rate_day - 1) / 2 * 100))
+    assert 0 < score <= 100
+    assert set(PRESCORE_WEIGHTS) == {"movement", "volume", "liquidity"}
+
+
+def test_ranking_orders_by_prescore_not_volume_alone():
+    at = time(12, 22)
+    strong = {"symbol": "STRONG", "volume": 1_500_000, "last_price": 104.0, "open": 100.0,
+              "high": 104.2, "low": 99.8}
+    churn = {"symbol": "CHURN", "volume": 2_500_000, "last_price": 100.05, "open": 100.0,
+             "high": 100.4, "low": 99.6}                                # heavy volume, no move
+    st = {s: daily_stats(s, daily_hlc(s, [(102, 98, 100, 1_000_000)] * 20), TODAY, 20)
+          for s in ("STRONG", "CHURN")}
+    ranked = rank_volume_change([strong, churn], st, FILTERS, at, CURVE)
+    assert [c.symbol for c in ranked] == ["STRONG", "CHURN"]
+    assert ranked[1].volume_change > ranked[0].volume_change              # churn had more volume

@@ -74,6 +74,7 @@ def test_first_refresh_builds_universe_preps_and_subscribes(tmp_path):
     u = state["universe"]
     assert u["source"] == "volume_scan" and u["pool"] == 700 and u["top_n"] == 2
     assert [(a["symbol"], a["volume_change"]) for a in u["active"]] == [("AAA", 4.0), ("BBB", 2.0)]
+    assert all("scan_score" in a for a in u["active"])
 
 
 def test_unchanged_universe_does_not_resubscribe(tmp_path):

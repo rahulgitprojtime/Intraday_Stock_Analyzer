@@ -12,6 +12,7 @@ Pure functions; missing stats or quotes are skipped, never guessed.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time
@@ -29,6 +30,7 @@ class DailyStats:
     avg_traded_value: float       # rupees/day, close × volume
     prev_close: float
     sessions: int
+    atr: float | None = None      # mean true range (high/low/close; Groww omits past opens)
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,55 @@ class ScanCandidate:
     day_change_pct: float
     last_price: float
     volume: int
+    score: float = 0.0            # M12 pre-rank: movement/volume/liquidity from quotes
+    parts: dict | None = None
+
+
+# M12 (DECISIONS #22): the quote-computable groups, with the engine's weights
+# (strategy.yaml engine.weights); the rest need 1-min candles (stage 2).
+PRESCORE_WEIGHTS = {"movement": 0.15, "volume": 0.20, "liquidity": 0.05}
+
+
+def _ramp(x, lo, hi):
+    return None if x is None else max(0.0, min(100.0, (x - lo) / (hi - lo) * 100))
+
+
+def _mean(parts: dict):
+    have = [v for v in parts.values() if v is not None]
+    return sum(have) / len(have) if have else None
+
+
+def prescore(q: dict, st: DailyStats, curve: Sequence[float]) -> tuple[float, dict]:
+    """Stage-1 score for one quote: MOVEMENT (change vs previous close, range
+    vs daily ATR, position in today's range, distance above VWAP), VOLUME
+    (time-adjusted volume change, acceleration vs the previous sweep),
+    LIQUIDITY (today's traded value). Same ramps as the engine's groups."""
+    last, hi, lo = q["last_price"], q.get("high"), q.get("low")
+    at = q.get("at")
+    frac = expected_fraction(curve, at.time()) if at else None
+    change = (last / st.prev_close - 1) * 100
+    rng = (hi - lo) / st.atr if hi and lo and st.atr else None
+    pos = (last - lo) / (hi - lo) if hi and lo and hi > lo else None
+    vw = q.get("average_price")
+    vol_change = q["volume"] / (st.avg_volume * frac) if frac else q.get("volume_change")
+    accel = None
+    if q.get("prev_volume") is not None and at and q.get("prev_at"):
+        mins = (at - q["prev_at"]).total_seconds() / 60
+        elapsed = (at.hour * 60 + at.minute) - (9 * 60 + 15)
+        if mins > 0 and elapsed > 0 and q["volume"] > 0:
+            accel = ((q["volume"] - q["prev_volume"]) / mins) / (q["volume"] / elapsed)
+    value = q["volume"] * last
+    parts = {
+        "movement": {"change": _ramp(change, 0, 3), "range": _ramp(rng, 0.3, 1.0),
+                     "position": _ramp(pos, 0.5, 1.0),
+                     "vwap": _ramp((last / vw - 1) * 100, 0, 1) if vw else None},
+        "volume": {"volume_change": _ramp(vol_change, 1, 4), "acceleration": _ramp(accel, 1, 3)},
+        "liquidity": {"traded_value": _ramp(math.log10(value), 7.7, 9.0) if value > 0 else None},
+    }
+    groups = {g: _mean(v) for g, v in parts.items()}
+    used = {g: w for g, w in PRESCORE_WEIGHTS.items() if groups[g] is not None}
+    score = sum(groups[g] * w for g, w in used.items()) / sum(used.values()) if used else 0.0
+    return score, parts
 
 
 def daily_stats(symbol: str, bars: Sequence[Candle], today: date, sessions: int
@@ -56,7 +107,16 @@ def daily_stats(symbol: str, bars: Sequence[Candle], today: date, sessions: int
         return None
     avg_vol = sum(b.volume for b in prior) / len(prior)
     avg_val = sum(b.close * b.volume for b in prior) / len(prior)
-    return DailyStats(symbol, avg_vol, avg_val, prior[-1].close, len(prior))
+    trs, prev = [], None
+    for b in prior:
+        if b.high is not None and b.low is not None:
+            tr = b.high - b.low
+            if prev is not None:
+                tr = max(tr, abs(b.high - prev), abs(b.low - prev))
+            trs.append(tr)
+        prev = b.close
+    atr = sum(trs) / len(trs) if trs else None
+    return DailyStats(symbol, avg_vol, avg_val, prior[-1].close, len(prior), atr)
 
 
 def load_market_curve() -> list[float]:
@@ -85,9 +145,13 @@ def rank_volume_change(quotes: Sequence[dict], stats: dict, filters: ScanFilters
         change = (q["last_price"] / st.prev_close - 1) * 100
         if filters.long_only and change <= 0:
             continue
-        out.append(ScanCandidate(q["symbol"], q["volume"] / (st.avg_volume * frac), change,
-                                 q["last_price"], q["volume"]))
-    return sorted(out, key=lambda c: (-c.volume_change, c.symbol))
+        vol_change = q["volume"] / (st.avg_volume * frac)
+        qq = q if q.get("at") else q | {"at": datetime.combine(date.today(), at),
+                                         "volume_change": vol_change}
+        score, parts = prescore(qq, st, curve)
+        out.append(ScanCandidate(q["symbol"], vol_change, change, q["last_price"], q["volume"],
+                                 score, parts))
+    return sorted(out, key=lambda c: (-c.score, -c.volume_change, c.symbol))
 
 
 class ActiveSet:

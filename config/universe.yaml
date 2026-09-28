@@ -63,7 +63,7 @@ filters:
 # and by replays.
 scan:
   enabled: true
-  top_n: 25
+  top_n: 50                  # pre-ranked by quote-computable groups; full 8-group score on these (M12)
   min_stay_minutes: 10       # a stock stays at least this long once it enters
   calls_per_minute: 200      # quote budget (Groww Live Data limit is 300/min total)
   stats_sessions: 20

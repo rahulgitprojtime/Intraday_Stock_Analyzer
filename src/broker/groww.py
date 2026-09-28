@@ -304,6 +304,7 @@ class GrowwAdapter(BrokerAdapter):
             day_change_pct=resp.get("day_change_perc", 0.0),
             depth=depth,
             as_of=as_of,
+            average_price=resp.get("average_price"),   # verified key; None after hours
         )
 
     def get_ltp(self, instruments: Sequence[Instrument]) -> dict[str, float]:

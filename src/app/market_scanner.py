@@ -113,8 +113,13 @@ class MarketScanner:
             try:
                 q = self.adapter.get_quote(self.instruments[sym])
                 with self._lock:
-                    self._quotes[sym] = {"symbol": sym, "volume": int(q.volume),
-                                         "last_price": float(q.last_price), "at": now}
+                    prev = self._quotes.get(sym)
+                    self._quotes[sym] = {
+                        "symbol": sym, "volume": int(q.volume), "last_price": float(q.last_price),
+                        "open": q.open or None, "high": q.high or None, "low": q.low or None,
+                        "average_price": getattr(q, "average_price", None), "at": now,
+                        "prev_volume": prev["volume"] if prev else None,
+                        "prev_at": prev["at"] if prev else None}
             except Exception as exc:
                 errors.append(f"scan {sym}: {type(exc).__name__}: {exc}")
         return errors
@@ -153,7 +158,8 @@ class MarketScanner:
                 "universe": len(self.instruments), "stats": len(self.stats)}
 
     def record(self, now: datetime, active: list[str]) -> None:
-        top = [{"symbol": c.symbol, "volume_change": round(c.volume_change, 4),
+        top = [{"symbol": c.symbol, "scan_score": round(c.score, 2),
+                "volume_change": round(c.volume_change, 4),
                 "day_change_pct": round(c.day_change_pct, 4), "volume": c.volume}
                for c in self.ranked(now)[: self.cfg.top_n]]
         path = self.scans_dir / f"{now.date().isoformat()}.jsonl"

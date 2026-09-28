@@ -299,3 +299,28 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   need ~21k calls / ~9 GB of 1-min data; deferred).
 - State schema v6: top-level `universe` block (source, pool, quoted,
   sweeps, active symbols with volume change).
+
+### #22 — M12 one transparent score from eight groups (2026-09-28, user directive)
+- User: "whichever stocks make the most score out of these indicators rank
+  on top; simple" — criteria grouped as PRICE MOVEMENT, VOLUME, MOMENTUM,
+  SETUP, MARKET, SECTOR, LIQUIDITY/DATA, QUALITATIVE.
+- `src/quantitative/groups.py`: each group 0-100 from sub-signals (averaged
+  over those with data; none → the group drops out, never counted as 0).
+  Group key for price movement is `movement` (the word "price" is banned in
+  output keys so no price levels leak, #11). ADX counts only above EMA20
+  (it is direction-agnostic; long-only). RSI > 80 = overextended → 50.
+- Final score = weighted average of available groups, user-chosen weights:
+  setup 20, volume 20, movement 15, momentum 15, sector 10, market 10,
+  liquidity 5, news 5. Supersedes the special caps of #16 (not in play →
+  WATCH), #18 (weak sector → WATCH − 5) and #19 (news +3 / cap − 5): those
+  signals now just lower their group. Kept: time-of-day rules (user
+  choice), hard rejects (stale/invalid data, illiquid, spread > 0.5%,
+  failed setup, below NEUTRAL floor).
+- Two stages because full criteria need 1-min candles (one call per stock
+  per minute; Groww cap 300/min): stage 1 pre-ranks the whole liquid pool
+  from quotes on the quote-computable groups (movement, volume incl.
+  acceleration between sweeps, liquidity; same weights, normalised) → top
+  50 → stage 2 scores all eight groups each minute.
+- BANK NIFTY joins the market group for sectors listed in
+  `sectors.yaml bank_nifty_sectors`; market regime = NIFTY vs its EMA20.
+- Weights are a judgement call, unvalidated; change only via M10 experiments.

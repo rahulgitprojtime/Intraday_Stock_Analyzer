@@ -376,3 +376,25 @@ def test_every_sdk_call_gets_a_request_timeout(monkeypatch):
     adapter.get_daily_candles(_cash_instrument("SUZLON"), date(2026, 9, 1), date(2026, 9, 28))
     [(_, kwargs)] = fake.instances[-1].calls
     assert kwargs["timeout"] == 10
+
+
+def test_rate_limit_sent_as_generic_api_error_is_still_retried(monkeypatch):
+    """Seen live 2026-09-29 on history at 5 calls/s: a plain GrowwAPIException
+    'Rate limit has breached for your request' — must back off, not fail."""
+    from src.broker.groww import GrowwAPIException
+    import src.utils.retry as retry_module
+
+    fake = install_fake_groww(monkeypatch)
+    monkeypatch.setenv("GROWW_AUTH_MODE", "api_key")
+    monkeypatch.setenv("GROWW_API_KEY", "k1")
+    monkeypatch.setenv("GROWW_API_SECRET", "s1")
+    fake.get_quote_raises_then_succeeds = [
+        GrowwAPIException("Rate limit has breached for your request. Please try again later.",
+                          "GA000"), None]
+    fake.get_quote_response = {"last_price": 100.0,
+                               "ohlc": {"open": 99, "high": 101, "low": 98, "close": 100},
+                               "volume": 1, "day_change": 0, "day_change_perc": 0}
+    monkeypatch.setattr(retry_module.time, "sleep", lambda _s: None)
+    adapter = GrowwAdapter()
+    adapter.authenticate()
+    assert adapter.get_quote(_cash_instrument("RELIANCE")).last_price == 100.0

@@ -282,3 +282,11 @@ M1 start: https://groww.in/trade-api/docs/python-sdk/annexures
   200, ~15-75 items/day per stock query; `<title>` ends with " - Source"
   (case may differ from `<source>`), `<description>` repeats the title,
   `<link>` is a Google redirect, `<pubDate>` is GMT.
+
+## History throttling (measured 2026-09-29)
+- Sequential 1-min history (~1.5 calls/s) never throttled. At 5 calls/s
+  (6 parallel workers) the history endpoint returned "Rate limit has breached
+  for your request. Please try again later." within the first minute — as a
+  plain `GrowwAPIException`, not `GrowwAPIRateLimitException`. The adapter
+  now treats any "rate limit" message as `RateLimitError` (retried with
+  backoff). History downloads run at 3 calls/s shared across workers.

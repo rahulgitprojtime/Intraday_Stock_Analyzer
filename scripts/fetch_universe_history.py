@@ -18,6 +18,7 @@ import argparse
 import json
 import sys
 import time as _time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from src.market.sector import load_sector_map  # noqa: E402
 from src.quantitative.volume_scan import ScanFilters  # noqa: E402
 from src.research.universe_history import build_pools, load_daily, save_daily, trading_days  # noqa: E402
 from src.utils.config import load_settings, load_universe  # noqa: E402
+from src.utils.ratelimit import RateLimiter  # noqa: E402
 
 STATS_LEAD_DAYS = 40            # calendar days before the first session, for 20 prior sessions
 
@@ -76,7 +78,9 @@ def main(argv=None) -> int:
     p.add_argument("--first", type=date.fromisoformat, required=True, help="first 1-min session")
     p.add_argument("--last", type=date.fromisoformat, required=True, help="last 1-min session")
     p.add_argument("--out", type=Path, default=ROOT / "data" / "universe_1y")
-    p.add_argument("--calls-per-minute", type=float, default=150)
+    p.add_argument("--calls-per-minute", type=float, default=150, help="daily-candle step")
+    p.add_argument("--calls-per-second", type=float, default=4, help="1-min step, shared by all workers")
+    p.add_argument("--workers", type=int, default=4, help="1-min step: stocks fetched in parallel")
     a = p.parse_args(argv)
 
     load_dotenv(ROOT / ".env")
@@ -95,11 +99,16 @@ def main(argv=None) -> int:
         print("  " + e)
 
     print("2/3 liquid pools per day ...", flush=True)
-    daily = {i.trading_symbol: load_daily(a.out / "daily", i.trading_symbol) for i in stocks}
-    daily = {s: b for s, b in daily.items() if b}
-    days = [d for d in trading_days(daily) if a.first <= d <= a.last]
-    pools = build_pools(daily, days, ScanFilters.from_config(load_universe().get("filters", {})))
-    (a.out / "pools.json").write_text(json.dumps(pools), encoding="utf-8")
+    pools_file = a.out / "pools.json"
+    if pools_file.exists() and not errors:           # resume: pools are a pure function of the daily files
+        pools = json.loads(pools_file.read_text(encoding="utf-8"))
+    else:
+        daily = {i.trading_symbol: load_daily(a.out / "daily", i.trading_symbol) for i in stocks}
+        daily = {s: b for s, b in daily.items() if b}
+        days = [d for d in trading_days(daily) if a.first <= d <= a.last]
+        pools = build_pools(daily, days, ScanFilters.from_config(load_universe().get("filters", {})))
+        pools_file.write_text(json.dumps(pools), encoding="utf-8")
+    days = sorted(date.fromisoformat(d) for d in pools)
     ever = sorted({s for pool in pools.values() for s in pool})
     sizes = [len(v) for v in pools.values()]
     print(f"  {len(days)} days, pool size {min(sizes)}..{max(sizes)}, {len(ever)} stocks ever in a pool",
@@ -116,22 +125,33 @@ def main(argv=None) -> int:
     done_dir = a.out / "_done"
     done_dir.mkdir(parents=True, exist_ok=True)
     print(f"3/3 1-min bars for {len(todo)} instruments x {len(days)} sessions ...", flush=True)
-    calls_each = (a.last - a.first).days // 30 + 1
-    fails = 0
-    for n, inst in enumerate(todo, 1):
-        mark = done_dir / inst.trading_symbol
-        if mark.exists():
-            continue
-        wait(calls_each)
+    # Every SDK history request passes one shared limiter, so parallel workers
+    # never exceed --calls-per-second in total (Groww: 10/s, 300/min).
+    limiter, sdk_call = RateLimiter(a.calls_per_second), adapter._client.get_historical_candles
+
+    def limited(**kw):
+        limiter.acquire()
+        return sdk_call(**kw)
+    adapter._client.get_historical_candles = limited
+
+    def one(inst) -> str | None:
         rep = download_sessions(adapter, [inst], a.last, len(days), a.out)
         got = rep[inst.trading_symbol]
         if isinstance(got, int):
-            mark.write_text(str(got), encoding="utf-8")
-        else:
-            fails += 1
-            print(f"  FAIL {inst.trading_symbol}: {got}", flush=True)
-        if n % 25 == 0:
-            print(f"  1-min {n}/{len(todo)} ({fails} failed)", flush=True)
+            (done_dir / inst.trading_symbol).write_text(str(got), encoding="utf-8")
+            return None
+        return f"{inst.trading_symbol}: {got}"
+
+    left = [i for i in todo if not (done_dir / i.trading_symbol).exists()]
+    print(f"  {len(todo) - len(left)} already done, {len(left)} to fetch", flush=True)
+    fails = 0
+    with ThreadPoolExecutor(a.workers) as ex:
+        for n, err in enumerate(ex.map(one, left), 1):
+            if err:
+                fails += 1
+                print(f"  FAIL {err}", flush=True)
+            if n % 25 == 0:
+                print(f"  1-min {n}/{len(left)} ({fails} failed)", flush=True)
     print(f"done: {len(todo) - fails}/{len(todo)} instruments -> {a.out}")
     return 0 if not fails else 1
 

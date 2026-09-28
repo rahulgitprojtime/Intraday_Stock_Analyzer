@@ -205,6 +205,10 @@ class GrowwAdapter(BrokerAdapter):
             except (GrowwAPIBadRequestException, GrowwAPINotFoundException) as exc:
                 raise BrokerAdapterError(str(exc)) from exc
             except GrowwBaseException as exc:
+                # 2026-09-29: history throttling arrived as a plain GrowwAPIException
+                # ("Rate limit has breached ..."), not GrowwAPIRateLimitException.
+                if "rate limit" in str(exc).lower():
+                    raise RateLimitError(str(exc)) from exc
                 raise BrokerAdapterError(str(exc)) from exc
 
         return retry_call(_attempt, retry_on=_RETRYABLE, max_attempts=4, base_delay_seconds=1.0)

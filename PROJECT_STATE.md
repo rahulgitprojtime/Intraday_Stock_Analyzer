@@ -12,7 +12,7 @@ by intraday traders (ORB, VWAP, PDH, CPR, EMA pullback, momentum burst),
 Scalp (1-min) and Day (5/15-min) modes, stocks-in-play pre-filter,
 time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 
-## Current milestone: M8 ✅ (sector funnel + checklist) → next: M9 news
+## Current milestone: M9 ✅ (news check) → next: outcome evaluation (M10)
 
 ### Completed
 - **M0** foundation: layered architecture, config, data models, `BrokerAdapter`.
@@ -80,8 +80,13 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   dashboard Sector/Prerequisites columns and card checklist. Worker loads
   9 sector indices (replay + live); `fetch_replay_data.py` downloads them.
 
+- **M9** (DECISIONS #19): `src/qualitative/` news source (Google News RSS),
+  headline-context rules, per-stock verdict, staggered `NewsService`;
+  POSITIVE +3 / NEGATIVE capped + −5; checklist news line, News column,
+  linked headlines on cards. Live only (replay: NOT_CHECKED).
+
 ### Tests
-243 passing (169 at the start of 2026-09-28) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+300 passing (169 at the start of 2026-09-28) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — unblocked 2026-09-27 (pandas 3.0.6, pyarrow 25.0.1, streamlit

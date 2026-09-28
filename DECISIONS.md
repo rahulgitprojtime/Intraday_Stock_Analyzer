@@ -218,3 +218,29 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   with PASS/WARN/FAIL/NA/NOT_CHECKED + detail, and a one-line
   `prerequisites_summary`; news NOT_CHECKED until M9. Schema v5.
 - Out of scope: exchange-wide breadth, INDIAVIX, NSE-sourced membership.
+
+### #19 — M9 news check: Google News RSS + headline-context rules (2026-09-28, user-approved, no spec by request)
+- Probed 2026-09-28: NSE and BSE announcement APIs return 403 to scripts
+  (not bypassed). Google News RSS works, no key, but carries the
+  **headline only** (description repeats it; links are Google redirects).
+  User chose RSS now, pluggable `NewsSource` for a keyed API later
+  (Marketaux / Drishti give snippets + sentiment; free tiers are small).
+- Rules (`src/qualitative/headline_rules.py`, `config/news.yaml`), user
+  asked to read headlines in context: stock named (aliases; common-word
+  aliases case-sensitive; look-alike companies excluded) → not a
+  roundup/list/price page → not speculation → direction phrase nearest
+  the stock, same clause (`;`/`|`), within 8 words; `*` gaps allowed
+  ("cuts * target"); negation within 5 words before neutralises.
+- Per stock (`news_check.py`): 18 h look-back, same story across outlets
+  merged (word overlap ≥ 60% of the shorter headline, same direction),
+  weighted by outlets → POSITIVE / NEGATIVE / MIXED / NEUTRAL /
+  NO_RELEVANT_INFORMATION. Stale (> 30 min) or failed → UNAVAILABLE.
+- Effects: POSITIVE +3 before caps (credibility, never enough alone);
+  NEGATIVE capped at WATCH and −5 after caps (like a weak sector).
+  Checklist news line cites the headline, outlet(s) and time; cards link
+  the real headlines. Replay: news NOT_CHECKED (no historical news).
+- Fetching staggered (3 stocks/minute, each ~10 min) inside the worker
+  tick; never blocks ranking. Live check on today's headlines found and
+  fixed look-alike and word-form misses; rules remain illustrative and
+  unvalidated (M10). Known gap: republished old stories (e.g. "Q1 results"
+  in September) can't be told apart from a headline alone.

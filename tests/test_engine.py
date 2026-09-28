@@ -409,3 +409,10 @@ def test_news_links_are_kept_and_no_invented_text():
     rec = evaluate(news=news_block("POSITIVE")).recommendations["DAY"]
     assert rec.qualitative["items"][0]["link"] == "https://news.example/1"
     assert evaluate().recommendations["DAY"].qualitative == {"status": "unavailable"}
+
+
+def test_news_pending_is_not_checked_with_reason():
+    pend = {"status": "unavailable", "verdict": "PENDING", "items": [],
+            "reason": "first news fetch pending"}
+    n = checks(evaluate(news=pend).recommendations["DAY"])["news"]
+    assert n == {"check": "news", "status": "NOT_CHECKED", "detail": "first news fetch pending"}

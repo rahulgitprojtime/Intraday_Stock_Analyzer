@@ -5,8 +5,9 @@ worker tick fetches up to `fetch_per_tick` stocks (never-fetched first,
 then oldest), each re-fetched about every `refresh_minutes`. Raw items are
 cached and re-aggregated at read time so the look-back window moves with
 the clock. A failed fetch keeps the last good result until
-`max_age_minutes`, then reports UNAVAILABLE. Never fetched → None, which
-the checklist shows as NOT_CHECKED. Read-only; nothing is invented.
+`max_age_minutes`, then reports UNAVAILABLE. Not yet fetched → PENDING;
+a stock with no aliases → None. Both show as NOT_CHECKED. Read-only;
+nothing is invented.
 """
 
 from __future__ import annotations
@@ -70,8 +71,11 @@ class NewsService:
         return errors
 
     def result(self, symbol: str, now: datetime) -> dict | None:
-        if symbol not in self._attempted_at:
+        if symbol not in self._aliases:
             return None
+        if symbol not in self._attempted_at:
+            return {"status": "unavailable", "verdict": "PENDING", "items": [],
+                    "reason": "first news fetch pending"}
         fetched = self._fetched_at.get(symbol)
         if fetched is None:
             return unavailable("news fetch failed")

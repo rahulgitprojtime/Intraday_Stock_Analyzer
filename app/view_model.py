@@ -102,7 +102,7 @@ def _sector_cell(sc: dict) -> str:
 
 NEWS_CELL = {"POSITIVE": "▲ upward", "NEGATIVE": "▼ downward", "MIXED": "mixed",
              "NEUTRAL": "no clear direction", "NO_RELEVANT_INFORMATION": "none relevant",
-             "UNAVAILABLE": "unavailable"}
+             "UNAVAILABLE": "unavailable", "PENDING": "pending"}
 ARROW = {"UP": "▲", "DOWN": "▼", "NEUTRAL": "•"}
 
 

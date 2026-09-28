@@ -48,7 +48,10 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [x] Real replay 2026-09-25 with 9 sector indices: CONFIRMED lead, WEAK deprioritized
 - [ ] Verify NIFTYCDTY membership for RELIANCE/ONGC/NTPC/POWERGRID/ULTRACEMCO/ADANIENT
 - [ ] Later: exchange-wide breadth, INDIAVIX regime (not needed by the funnel)
-## M9 — News check in the funnel (structured, sourced only)
-- [ ] Fill the `news` prerequisite (currently NOT_CHECKED) from a real, linked source; no source → NO_RELEVANT_INFORMATION, never invented
+## M9 — News check in the funnel ✅ (DECISIONS #19)
+- [x] Google News RSS source, headline-context rules, per-stock verdict, staggered service, engine effects, checklist + News column + linked headlines
+- [x] Live-checked on all 25 stocks; rules hardened (look-alikes, case, clauses, word forms)
+- [ ] Optional: keyed source with snippets/sentiment (Marketaux or Drishti) behind the same NewsSource
+- [ ] Review misclassified headlines weekly; extend config/news.yaml
 ## M10 — Historical validation and weight/feature evaluation
 ## M11 — Streamlit refinement · M12 — Performance/operational hardening

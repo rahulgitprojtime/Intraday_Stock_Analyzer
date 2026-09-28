@@ -48,9 +48,11 @@ def test_staggered_fetch_never_fetched_first_then_oldest():
     assert src.calls[4:] == ["TCS", "Infosys"]                   # oldest refreshed first
 
 
-def test_result_none_before_first_fetch_then_verdict():
+def test_result_pending_before_first_fetch_then_verdict():
     svc, _ = service()
-    assert svc.result("TCS", T) is None                          # NOT_CHECKED, never guessed
+    assert svc.result("TCS", T) == {"status": "unavailable", "verdict": "PENDING", "items": [],
+                                    "reason": "first news fetch pending"}
+    assert svc.result("UNKNOWN", T) is None                      # no aliases: not checked
     svc.tick(T)
     r = svc.result("TCS", T + M)
     assert r["verdict"] == "POSITIVE" and r["source"] == "fake" and r["age_minutes"] == 1

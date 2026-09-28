@@ -273,3 +273,12 @@ M1 start: https://groww.in/trade-api/docs/python-sdk/annexures
   7/7 passed with no code change (transient/account-side; cause unknown).
 - 1-min history for 2026-08-27..09-25: every session has 362 bars; 15:16-15:27
   are absent (closing-session minutes), for stocks and NIFTY alike.
+
+## News sources (not Groww) — probed 2026-09-28
+- `https://www.nseindia.com/` and `/api/corporate-announcements`: HTTP 403
+  to a script even with browser headers. BSE
+  `api.bseindia.com/BseIndiaAPI/api/AnnSubCategoryGetData/w`: 403. Not used.
+- Google News RSS `https://news.google.com/rss/search?q=...&hl=en-IN&gl=IN&ceid=IN:en`:
+  200, ~15-75 items/day per stock query; `<title>` ends with " - Source"
+  (case may differ from `<source>`), `<description>` repeats the title,
+  `<link>` is a Google redirect, `<pubDate>` is GMT.

@@ -65,6 +65,8 @@ def _news(news: dict | None) -> dict:
         return _check("news", NOT_CHECKED, "not checked (no live news source)")
     verdict = news.get("verdict")
     items = news.get("items") or []
+    if verdict == "PENDING":
+        return _check("news", NOT_CHECKED, news.get("reason", "news check pending"))
     if verdict == "UNAVAILABLE":
         return _check("news", NA, f"news unavailable: {news.get('reason', '')}".rstrip(": "))
     if verdict == "NO_RELEVANT_INFORMATION":

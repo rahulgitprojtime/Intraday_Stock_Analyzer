@@ -98,5 +98,4 @@ AVOID candidates are scored but never ranked; state.json schema v3.
 ### Next task
 Real-day replay done 2026-09-28; not-in-play caps at WATCH (DECISIONS #16).
 M7 done and live-verified. Next: observe one full live session (TODO),
-then M8: live Groww feed
-+ depth (needs credentials + live-price subscription).
+then M8: sector + market breadth + relative-strength context.

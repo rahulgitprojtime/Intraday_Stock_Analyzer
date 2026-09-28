@@ -6,6 +6,10 @@ judged by tick age. During the session: no tick for `stale_after_seconds`
 token), at most once per `min_restart_interval_seconds`, backing off to
 `slow_restart_interval_seconds` after `max_fast_restarts` restarts
 without a tick. Never raises: a failed start/restart leaves status DOWN.
+
+Health also needs stock coverage (share of subscribed stocks that ticked
+within `down_after_seconds`) >= `min_stock_coverage`: live 2026-09-28,
+after a network drop NIFTY kept ticking while 23/24 stocks went silent.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ class FeedConfig:
     min_restart_interval_seconds: float = 60
     max_fast_restarts: int = 5
     slow_restart_interval_seconds: float = 300
+    min_stock_coverage: float = 0.5
 
     @classmethod
     def from_dict(cls, d: dict) -> FeedConfig:
@@ -43,9 +48,10 @@ class FeedWatchdog:
         self.last_error: str | None = None
         self._started_at: datetime | None = None
         self._last_attempt: datetime | None = None
+        self._coverage_ok_at: datetime | None = None
 
     def _attempt(self, fn, now: datetime) -> None:
-        self._started_at = self._last_attempt = now
+        self._started_at = self._last_attempt = self._coverage_ok_at = now
         try:
             fn()
             self.last_error = None
@@ -57,14 +63,20 @@ class FeedWatchdog:
         self.status = STALE
         self._attempt(self.feed.start, now)
 
-    def check(self, now: datetime, last_any_tick_age_s: float | None) -> str:
+    def check(self, now: datetime, last_any_tick_age_s: float | None,
+              stock_coverage: float | None = None) -> str:
         if not SESSION_OPEN <= now.time() <= SESSION_CLOSE:
             self.status = OFF
             return self.status
         since_start = (now - self._started_at).total_seconds() if self._started_at else 0.0
         age = since_start if last_any_tick_age_s is None else min(last_any_tick_age_s,
                                                                   since_start)
-        if last_any_tick_age_s is not None and age <= self.cfg.stale_after_seconds:
+        covered = stock_coverage is None or stock_coverage >= self.cfg.min_stock_coverage
+        if covered:
+            self._coverage_ok_at = now
+        else:                          # silent since coverage was last OK (or start)
+            age = max(age, (now - self._coverage_ok_at).total_seconds())
+        if covered and last_any_tick_age_s is not None and age <= self.cfg.stale_after_seconds:
             self.status, self.failures = LIVE, 0
         elif age <= self.cfg.down_after_seconds:
             self.status = STALE

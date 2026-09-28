@@ -154,3 +154,16 @@ def test_run_loop_stops_feed_even_on_error(tmp_path):
     with pytest.raises(RuntimeError):
         run_loop(ctx, clock(), tmp_path / "s.json", delay=0.0, ticks=None)
     assert ctx.watchdog.feed.stopped == 1 and (tmp_path / "s.json").exists()
+
+
+def test_worker_passes_stock_coverage_to_watchdog(tmp_path):
+    ctx = live_like(tmp_path)
+    seen = {}
+    real = ctx.watchdog.check
+    ctx.watchdog.check = lambda now, age, stock_coverage=None: (
+        seen.update(age=age, cov=stock_coverage) or real(now, age, stock_coverage))
+    ctx.feed_store.count_tick("NIFTY", GEN)
+    ctx.feed_store.count_tick("AAA", GEN - timedelta(seconds=5))
+    ctx.feed_store.count_tick("BBB", GEN - timedelta(seconds=300))     # silent stock
+    run_tick(ctx, AS_OF, GEN)
+    assert seen == {"age": 0.0, "cov": 0.5}

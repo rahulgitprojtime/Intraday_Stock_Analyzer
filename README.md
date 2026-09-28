@@ -38,9 +38,21 @@ python scripts/make_demo_data.py --out data/demo --day 2026-09-25
 python -m src.app.worker --replay data/demo --day 2026-09-25 --speed 60
 streamlit run app/dashboard.py        # needs pandas/pyarrow to load
 
-# Live (needs Groww credentials + live-price subscription; not yet run)
+# Replay real sessions (Groww credentials; read-only history download)
+python scripts/fetch_replay_data.py --day 2026-09-25 --out data/replay
+python -m src.app.worker --replay data/replay --day 2026-09-25 --speed 60
+
+# Live, market hours (Groww credentials + live-price subscription):
+# REST 1-min candles + live feed (LTP, depth, NIFTY) in one process (M7)
+python scripts/groww_smoke.py         # REST check
+python scripts/feed_smoke.py          # live feed check (~2 min)
 python -m src.app.worker
 ```
+
+Live mode streams LTP/depth for the whole universe. The dashboard header
+shows the feed status (LIVE / STALE / DOWN / OFF); on STALE/DOWN the
+worker keeps ranking from REST candles and pauses the spread check and
+Scalp microstructure.
 
 `--speed` is simulated minutes per real minute (`0` = as fast as
 possible). DEMO data is synthetic and is not strategy evidence.

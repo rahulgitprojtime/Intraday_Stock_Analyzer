@@ -171,3 +171,24 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   Hard AVOID gates remain: best setup FAILED, score below NEUTRAL floor.
 - Known trade-off: capped names tie at the cap and sort by symbol.
   Supersedes the "not in play" item of #15. Schema unchanged (v3).
+
+### #17 — M7 live feed: hybrid read path, spread gate, SCALP microstructure; schema v4 (2026-09-28, user-approved)
+- Spec: `docs/superpowers/specs/2026-09-28-m7-live-feed-design.md`.
+- The SDK callback gets only meta, so `LiveFeed` counts ticks in the
+  callback (exact velocity) and a 1 s poller reads latest LTP/depth into a
+  thread-safe `FeedStore` (`src/data/`). Ages use local arrival time.
+- Health by tick age (`FeedWatchdog`): STALE 30 s, DOWN 60 s → restart with
+  a fresh socket token, max 1/min, backoff to 5 min after 5. The worker
+  never stops for the feed: REST candles keep ranking. Health also needs
+  stock coverage >= 50% (stocks ticking within 60 s): live, after a network
+  drop, NIFTY kept ticking while 23/24 stocks went silent.
+- Spread > `max_spread_pct` (0.5) excludes a stock (both modes) when depth
+  is fresh; otherwise "spread unchecked". `microstructure` component
+  (imbalance 60% / velocity 40%) is SCALP-only at weight 0.10; engine
+  weights 0.50/0.30/0.10/0.10. DAY/replay renormalize over the rest
+  (0.556/0.333/0.111) — small shift, user-accepted.
+- Velocity is None for the first 5 min a symbol is observed (the 5-min
+  average is understated during warm-up; seen live as 5.0 for everything).
+- `BrokerAdapter` streaming stubs removed; streaming lives in
+  `src/broker/groww_feed.py`; `GrowwAdapter.api_client()` hands the SDK
+  client to it. State schema v4 adds a top-level `feed` block.

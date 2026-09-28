@@ -182,10 +182,30 @@ feed.consume()  # blocking — run in its own thread/process, never in Streamlit
   `subscribe_index_value`, `subscribe_market_depth` + matching
   `unsubscribe_*`. **No volume in the feed** (DECISIONS.md #9). Order and
   position update feeds exist but are unused by this project.
-- No documented native reconnect/heartbeat details captured yet — M3 must
-  verify current behavior (does the SDK auto-reconnect? what does a dropped
-  connection look like to the caller?) before finalizing stale-data
-  detection logic.
+- **Verified 2026-09-28 from the growwapi 1.5.0 source**: `GrowwFeed(groww)`
+  mints a socket token and starts a NATS client on a daemon thread
+  (`consume()` only joins it). nats-py default reconnect + resubscribe;
+  disconnect/closed callbacks only log — the caller is never told. The
+  `on_data_received` callback receives only `meta` (`exchange`, `segment`,
+  `feed_key`, `feed_type` ∈ `ltp`/`market_depth`/`index_value`), never the
+  data. Getters return `{exchange: {segment: {feed_key: data}}}` and parse
+  every subscribed topic per call. How M7 uses it: DECISIONS #17.
+- **Live 2026-09-28 (market hours)**: RELIANCE/TCS/INFY LTP + depth and the
+  NIFTY index all stream. Index `exchange_token` from the instrument CSV
+  is `NIFTY` (= feed key). A subscribed topic's data is `null` until its
+  first message arrives. Depth arrived with 5 filled levels per side.
+  Rough rates at ~12:00: NIFTY ~300 msgs/min, TCS ~30, INFY ~23, RELIANCE
+  ~11. The SDK logged a bare `Error: ` (NATS `error_cb`, empty message)
+  once at subscribe; data flowed normally afterwards.
+- **Live 2026-09-28, network drop (12:10-12:30)**: the SDK logged
+  `Disconnected`, `Cannot connect ... [getaddrinfo failed]`, `[Access is
+  denied]`, `nats: empty response from server when expecting INFO message`.
+  Afterwards NIFTY index ticks resumed but 23/24 stocks stayed silent for
+  2+ min (healthy baseline: every universe stock ticks 6-27/min). Treat
+  the SDK's auto-reconnect as unreliable for subscriptions; the watchdog
+  restarts on low stock coverage (DECISIONS #17). The 1-min REST refresh
+  also slowed during the outage (8 worker ticks took 28 min) but every
+  state written stayed valid.
 
 ## Instruments CSV (verified 2026-09-25 against the live file)
 

@@ -93,3 +93,16 @@ def test_outside_session_never_restarts():
     night = datetime(2026, 9, 28, 16, 0, 0)
     wd.start(night)
     assert wd.check(night + 600 * S, None) == "OFF" and feed.restarts == 0
+
+
+def test_index_ticks_alone_do_not_hide_lost_stock_subscriptions():
+    """Live 2026-09-28: after a network drop NIFTY kept ticking but 23/24
+    stocks went silent; health must also require stock coverage."""
+    feed = StubFeed()
+    wd = FeedWatchdog(feed, FeedConfig())
+    wd.start(T)
+    assert wd.check(T + 10 * S, last_any_tick_age_s=0.1, stock_coverage=1.0) == "LIVE"
+    assert wd.check(T + 40 * S, last_any_tick_age_s=0.1, stock_coverage=0.04) == "STALE"
+    assert wd.check(T + 71 * S, last_any_tick_age_s=0.1, stock_coverage=0.04) == "DOWN"
+    assert feed.restarts == 1
+    assert wd.check(T + 90 * S, last_any_tick_age_s=0.1, stock_coverage=0.9) == "LIVE"

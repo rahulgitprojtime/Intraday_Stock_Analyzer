@@ -19,6 +19,7 @@ feed:                               # live feed watchdog (M7, spec 2026-09-28 §
   min_restart_interval_seconds: 60
   max_fast_restarts: 5              # then back off
   slow_restart_interval_seconds: 300
+  min_stock_coverage: 0.5           # share of stocks ticking within down_after
 
 candles:
   timeframes_minutes: [1, 3, 5, 15]

@@ -71,6 +71,17 @@ def prepare(ctx: WorkerContext, day: date) -> None:
             ctx.errors.append(f"{inst.trading_symbol}: prep failed: {exc}")
 
 
+def _stock_coverage(ctx: WorkerContext, snap) -> float | None:
+    """Share of stocks with a tick within the watchdog's down window."""
+    if snap is None or not ctx.stocks:
+        return None
+    window = ctx.watchdog.cfg.down_after_seconds
+    fresh = sum(1 for i in ctx.stocks
+                if (st := snap.symbols.get(i.trading_symbol)) is not None
+                and st.last_tick_age_s is not None and st.last_tick_age_s <= window)
+    return fresh / len(ctx.stocks)
+
+
 def _feed_block(ctx: WorkerContext, snap) -> dict:
     wd = ctx.watchdog
     return {
@@ -88,7 +99,8 @@ def run_tick(ctx: WorkerContext, as_of: datetime, generated_at: datetime) -> dic
     errors = list(ctx.errors)
     snap = ctx.feed_store.snapshot(generated_at) if ctx.feed_store else None
     if ctx.watchdog is not None:
-        ctx.watchdog.check(generated_at, snap.last_any_tick_age_s if snap else None)
+        ctx.watchdog.check(generated_at, snap.last_any_tick_age_s if snap else None,
+                           _stock_coverage(ctx, snap))
         if ctx.watchdog.last_error:
             errors.append(f"feed: {ctx.watchdog.last_error}")
     index_bars = []

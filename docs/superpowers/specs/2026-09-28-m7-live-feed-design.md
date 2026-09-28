@@ -107,6 +107,9 @@ Live worker: authenticate → resolve universe → `prepare()` (REST) →
   socket token, resubscribe). At most one restart per minute; after 5
   consecutive failed restarts, retry every 5 min. A tick arriving resets
   to `LIVE` and the failure count. Thresholds in `settings.yaml` `feed:`.
+- **Stock coverage (added after live run 2026-09-28):** health also
+  requires >= 50% of subscribed stocks to have ticked within 60 s; below
+  that counts as silent (STALE → DOWN → restart) even if NIFTY ticks.
 - **Per-symbol staleness:** handled by `symbol_feed` → None; never
   triggers a restart.
 - **Bad payloads:** missing/zero/non-numeric fields are skipped and

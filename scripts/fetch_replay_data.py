@@ -85,7 +85,7 @@ def main(argv=None) -> int:
     for problem in problems:
         print(f"SKIP  sectors.yaml: {problem}")
     sector_idx = []
-    for name in sorted({s["index"] for s in sectors.values()}):
+    for name in sorted({s["index"] for s in sectors.values()} | {"BANKNIFTY"}):
         try:
             sector_idx.append(adapter.resolve_instrument(name, "NSE", "CASH"))
         except ValueError as exc:

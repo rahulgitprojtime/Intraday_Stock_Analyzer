@@ -29,7 +29,7 @@ from src.recommendation.engine import SymbolInputs, evaluate_symbol, rank_recomm
 from src.recommendation.models import MODES
 from src.recommendation.schema import SCHEMA_VERSION
 from src.recommendation.scoring import EngineConfig
-from src.utils.config import load_settings, load_strategy, load_universe
+from src.utils.config import load_settings, load_strategy, load_universe, load_yaml
 
 SESSION_END = time(15, 30)
 DEFAULT_OUT = Path("data/processed/state.json")
@@ -56,6 +56,8 @@ class WorkerContext:
     sector_indices: list = field(default_factory=list)   # Instruments with candle data
     news: object | None = None                           # NewsService, live only (M9)
     universe: object | None = None                       # DynamicUniverse, live scan (M11)
+    bank_index: Instrument | None = None                 # BANK NIFTY (M12 market group)
+    bank_sectors: frozenset = frozenset()                # sectors that also use BANK NIFTY
 
 
 def base_context(source, stocks, index, source_name: str, demo: bool) -> WorkerContext:
@@ -68,6 +70,7 @@ def base_context(source, stocks, index, source_name: str, demo: bool) -> WorkerC
         source_name, demo, MicroConfig.from_dict(strategy.get("microstructure", {})),
     )
     ctx.sectors, ctx.sector_cfg = sectors, SectorConfig.from_dict(strategy.get("sector", {}))
+    ctx.bank_sectors = frozenset(load_yaml("sectors.yaml").get("bank_nifty_sectors") or [])
     ctx.errors += [f"sectors.yaml: {p}" for p in problems]
     return ctx
 
@@ -125,6 +128,13 @@ def run_tick(ctx: WorkerContext, as_of: datetime, generated_at: datetime) -> dic
             errors.append(f"{ctx.index.trading_symbol}: {exc}")
     market = nifty_context(index_bars, as_of, ctx.stale_after_seconds,
                            ctx.engine_cfg.market_ramp_pct)
+    bank_ctx = None
+    if ctx.bank_index is not None:
+        try:
+            bank_ctx = nifty_context(ctx.source.minute_candles(ctx.bank_index, as_of), as_of,
+                                     ctx.stale_after_seconds, ctx.engine_cfg.market_ramp_pct)
+        except Exception as exc:            # BANK NIFTY missing → the part drops out
+            errors.append(f"BANKNIFTY: {exc}")
     by_mode: dict = {m: [] for m in MODES}
     excluded, in_play, freshest = [], 0, None
     bars_by: dict = {}
@@ -151,11 +161,12 @@ def run_tick(ctx: WorkerContext, as_of: datetime, generated_at: datetime) -> dic
         try:
             feed = (symbol_feed(snap, sym, ctx.stale_after_seconds, ctx.micro_cfg)
                     if snap else None)
+            sc = stock_context(sym, snapshot, bars_by[sym], ctx.sector_cfg)
             inputs = SymbolInputs(sym, bars_by[sym], pr.prep if pr else None,
                                   pr.volume_curve if pr else [], pr.liquidity if pr else None,
-                                  index_bars, feed,
-                                  stock_context(sym, snapshot, bars_by[sym], ctx.sector_cfg),
-                                  ctx.news.result(sym, generated_at) if ctx.news else None)
+                                  index_bars, feed, sc,
+                                  ctx.news.result(sym, generated_at) if ctx.news else None,
+                                  bank_ctx if sc.get("sector") in ctx.bank_sectors else None)
             ev = evaluate_symbol(inputs, market, as_of, ctx.engine_cfg, ctx.in_play_cfg,
                                  ctx.liquidity_filters, ctx.stale_after_seconds)
         except Exception as exc:
@@ -241,6 +252,10 @@ def _live_context() -> WorkerContext:
     stocks = [] if scanning else uni.stocks      # scan: universe filled by DynamicUniverse
     ctx = base_context(source, stocks, index, "live", False)
     ctx.errors += [f"{s}: {r}" for s, r in uni.rejected.items()]
+    try:
+        ctx.bank_index = adapter.resolve_instrument("BANKNIFTY", "NSE", "CASH")
+    except ValueError as exc:
+        ctx.errors.append(f"BANKNIFTY: {exc}")
     for sec in ctx.sectors.values():
         try:
             ctx.sector_indices.append(adapter.resolve_instrument(sec["index"], "NSE", "CASH"))
@@ -263,7 +278,6 @@ def _dynamic_universe(adapter, master, scan_cfg: dict, data_dir: Path, feed):
     from src.app.dynamic_universe import DynamicUniverse
     from src.app.market_scanner import MarketScanner, ScannerConfig
     from src.quantitative.volume_scan import ActiveSet, ScanFilters, load_market_curve
-    from src.utils.config import load_yaml
 
     f = load_universe().get("filters", {})
     cfg = ScannerConfig.from_dict(scan_cfg)
@@ -282,7 +296,6 @@ def _news_service(symbols: list[str]):
     from src.qualitative.headline_rules import NewsRules
     from src.qualitative.news_service import NewsConfig, NewsService
     from src.qualitative.news_source import GoogleNewsRSS
-    from src.utils.config import load_yaml
 
     raw = load_yaml("news.yaml")
     cfg = NewsConfig.from_dict(raw)
@@ -319,12 +332,15 @@ def main(argv=None) -> int:
         if a.day is None:
             p.error("--day is required with --replay")
         sectors, _ = load_sector_map(load_universe().get("symbols") or [])
-        source = ReplaySource(a.replay, a.day, {s["index"] for s in sectors.values()})
+        source = ReplaySource(a.replay, a.day,
+                              {s["index"] for s in sectors.values()} | {"BANKNIFTY"})
         stocks, index = source.instruments()
         if not stocks:
             p.error(f"no candle files for {a.day} in {a.replay}")
         ctx = base_context(source, stocks, index, "replay", source.is_demo)
         ctx.sector_indices = source.sector_indices()
+        ctx.bank_index = next((i for i in ctx.sector_indices
+                               if i.trading_symbol == "BANKNIFTY"), None)
         day, clock = a.day, replay_clock(a.day)
         delay = 60.0 / a.speed if a.speed > 0 else 0.0
     else:

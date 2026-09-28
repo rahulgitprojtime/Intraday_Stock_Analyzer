@@ -4,6 +4,9 @@
 # stock (first listing wins). Stocks not listed (LT, BHARTIARTL, TITAN)
 # have no sector index: sector check shows "not available".
 # NIFTYCDTY (commodities) membership is a best-effort mapping — verify.
+# Stocks in these sectors also get BANK NIFTY in the market group (M12).
+bank_nifty_sectors: [PVT_BANK, PSU_BANK, FIN_SERVICES]
+
 sectors:
   PVT_BANK:
     index: NIFTYPVTBANK

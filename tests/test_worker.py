@@ -220,3 +220,16 @@ def test_news_service_is_ticked_with_real_clock_and_results_flow_through(tmp_pat
     news = {r["symbol"]: [c for c in r["prerequisites"] if c["check"] == "news"][0]["status"]
             for r in state["modes"]["DAY"]}
     assert news == {"AAA": "NA", "BBB": "NOT_CHECKED"}
+
+
+def test_bank_nifty_feeds_market_group_only_for_bank_sectors(tmp_path):
+    write_replay_fixture(tmp_path, symbols=("AAA", "BBB", "BANKNIFTY"))
+    src = ReplaySource(tmp_path, REPLAY_DAY, index_symbols={"BANKNIFTY"})
+    stocks, index = src.instruments()
+    ctx = base_context(src, stocks, index, "replay", False)
+    ctx.sectors = {"PVT_BANK": {"index": "NIFTYPVTBANK", "members": ["AAA"]}}
+    ctx.bank_index = next(i for i in src.sector_indices() if i.trading_symbol == "BANKNIFTY")
+    prepare(ctx, REPLAY_DAY)
+    recs = {r["symbol"]: r for r in run_tick(ctx, AS_OF, GEN)["modes"]["DAY"]}
+    bank = lambda s: recs[s]["quantitative"]["groups"]["market"]["parts"]["bank_nifty"]  # noqa: E731
+    assert bank("AAA") is not None and bank("BBB") is None

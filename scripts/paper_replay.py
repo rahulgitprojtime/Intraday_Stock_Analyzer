@@ -34,10 +34,13 @@ from src.utils.config import load_universe, load_yaml  # noqa: E402
 def run_paper_day(replay_root: str | Path, day: date, out_root: str | Path, cfg: PaperConfig,
                   run_id: str) -> dict:
     sectors, _ = load_sector_map(load_universe().get("symbols") or [])
-    source = ReplaySource(replay_root, day, {s["index"] for s in sectors.values()})
+    source = ReplaySource(replay_root, day,
+                          {s["index"] for s in sectors.values()} | {"BANKNIFTY"})
     stocks, index = source.instruments()
     ctx = base_context(source, stocks, index, "replay", source.is_demo)
     ctx.sector_indices = source.sector_indices()
+    ctx.bank_index = next((i for i in ctx.sector_indices if i.trading_symbol == "BANKNIFTY"),
+                          None)
     prepare(ctx, day)
     atr = {sym: (pr.prep.atr if pr else None) for sym, pr in ctx.preps.items()}
     versions = version_info()

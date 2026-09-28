@@ -49,6 +49,10 @@ python scripts/feed_smoke.py          # live feed check (~2 min)
 python -m src.app.worker
 ```
 
+`INTRADAY_STATE=<path> streamlit run app/dashboard.py --server.port 8502`
+points a second dashboard at another state file (e.g. a replay next to
+live).
+
 Live mode streams LTP/depth for the whole universe. The dashboard header
 shows the feed status (LIVE / STALE / DOWN / OFF); on STALE/DOWN the
 worker keeps ranking from REST candles and pauses the spread check and

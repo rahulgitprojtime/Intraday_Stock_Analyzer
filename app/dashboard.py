@@ -7,6 +7,7 @@ methodology and why. No order controls, no price levels.
     streamlit run app/dashboard.py
 """
 
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -26,7 +27,7 @@ from app.view_model import (  # noqa: E402
     table_rows,
 )
 
-STATE_PATH = ROOT / "data" / "processed" / "state.json"
+STATE_PATH = Path(os.environ.get("INTRADAY_STATE", ROOT / "data" / "processed" / "state.json"))
 
 st.set_page_config(page_title="Intraday Candidates", layout="wide")
 st.title("Top intraday candidates")

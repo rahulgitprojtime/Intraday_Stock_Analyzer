@@ -26,7 +26,12 @@ from pathlib import Path
 HORIZONS = (5, 15, 30, 60)
 MIN_ROWS, MIN_DAYS = 30, 20
 BOOT = 400
-_DROP = ("p_", "mfe_", "mae_", "fwd_", "net_", "xs_sector_", "truncated_")   # unused by the report; saves memory
+# Columns the report reads; everything else is dropped on load (a whole-market
+# year is ~1M rows, M16).
+_KEEP = {"day", "as_of", "symbol", "mode", "strategy_version", "score", "base_score",
+         "lunch_penalty", "rvol", "sector_verdict", "news_verdict", "confluence_count",
+         "raw_movement_day_change_pct", "micro_score", "triggered"}
+_KEEP_PREFIX = ("g_", "setup_", "xs_nifty_")
 TECH_WEIGHTS = {"setup": 0.20, "volume": 0.20, "movement": 0.15, "momentum": 0.15,
                 "liquidity": 0.05}            # the engine weights of the technical groups only
 
@@ -40,7 +45,7 @@ def load_rows(labeled_dir: Path, start: str | None = None, end: str | None = Non
         for line in p.read_text(encoding="utf-8").splitlines():
             r = json.loads(line)
             if r.get("trigger") == "panel" and (version is None or r.get("strategy_version") == version):
-                rows.append({k: v for k, v in r.items() if not k.startswith(_DROP)})
+                rows.append({k: v for k, v in r.items() if k in _KEEP or k.startswith(_KEEP_PREFIX)})
     return rows
 
 

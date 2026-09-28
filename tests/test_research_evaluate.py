@@ -83,3 +83,16 @@ def test_report_runs_and_flags_small_samples():
     text = report(rs, "t")
     assert "3 day(s): description, not evidence" in text
     assert text.count("## ") == 11                       # 10 questions, score bands per mode
+
+
+def test_load_rows_keeps_panel_rows_and_only_needed_columns(tmp_path):
+    import json
+    from src.research.evaluate import load_rows
+    row = {"day": "2026-01-05", "as_of": "2026-01-05T10:00:00", "symbol": "A", "mode": "DAY",
+           "trigger": "panel", "score": 70.0, "g_volume": 50.0, "setup_ORB15": "NONE",
+           "xs_nifty_5": 0.1, "p_volume_rvol": 3.0, "fwd_5": 0.2, "config_hash": "x"}
+    (tmp_path / "2026-01-05.jsonl").write_text(
+        json.dumps(row) + "\n" + json.dumps(row | {"trigger": "event"}) + "\n")
+    [r] = load_rows(tmp_path)
+    assert r["g_volume"] == 50.0 and r["setup_ORB15"] == "NONE" and r["xs_nifty_5"] == 0.1
+    assert "p_volume_rvol" not in r and "fwd_5" not in r and "config_hash" not in r

@@ -167,3 +167,28 @@ def test_worker_passes_stock_coverage_to_watchdog(tmp_path):
     ctx.feed_store.count_tick("BBB", GEN - timedelta(seconds=300))     # silent stock
     run_tick(ctx, AS_OF, GEN)
     assert seen == {"age": 0.0, "cov": 0.5}
+
+
+def test_sector_context_reaches_recommendations(tmp_path):
+    write_replay_fixture(tmp_path, symbols=("AAA", "BBB", "SECIDX"))
+    src = ReplaySource(tmp_path, REPLAY_DAY, index_symbols={"SECIDX"})
+    stocks, index = src.instruments()
+    ctx = base_context(src, stocks, index, "replay", False)
+    ctx.sectors = {"S": {"index": "SECIDX", "members": ["AAA", "BBB"]}}
+    ctx.sector_indices = src.sector_indices()
+    prepare(ctx, REPLAY_DAY)
+    state = run_tick(ctx, AS_OF, GEN)
+    assert validate_state(state) == [] and state["universe_count"] == 2
+    for rec in state["modes"]["DAY"]:
+        sc = rec["sector_context"]
+        assert sc["status"] == "available" and sc["index"] == "SECIDX"
+        assert sc["verdict"] == "CONFIRMED" and sc["peers_total"] == 0     # 1 peer → index only
+        assert [c["check"] for c in rec["prerequisites"]][3] == "sector"
+        assert rec["prerequisites_summary"].startswith("Checked: ")
+
+
+def test_missing_sector_index_data_is_unavailable_not_error(tmp_path):
+    ctx = context(tmp_path)                        # default map; no sector index files
+    state = run_tick(ctx, AS_OF, GEN)
+    assert state["errors"] == []
+    assert all(r["sector_context"]["verdict"] == "UNAVAILABLE" for r in state["modes"]["DAY"])

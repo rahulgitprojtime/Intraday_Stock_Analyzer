@@ -67,3 +67,11 @@ def test_live_source_uses_only_read_calls(tmp_path):
     bars = live.minute_candles(AAA, at(9, 17, datetime(2026, 9, 25).date()))
     assert [b.timestamp for b in bars] == [at(9, 15), at(9, 16)]   # 09:17 still forming
     assert set(adapter.calls) == {"get_historical_candles"}
+
+
+def test_sector_index_files_are_indices_not_stocks(tmp_path):
+    write_replay_fixture(tmp_path, symbols=("AAA", "BBB", "SECIDX"))
+    src = ReplaySource(tmp_path, REPLAY_DAY, index_symbols={"SECIDX", "NOTPRESENT"})
+    stocks, index = src.instruments()
+    assert [s.trading_symbol for s in stocks] == ["AAA", "BBB"]
+    assert [(i.trading_symbol, i.is_index) for i in src.sector_indices()] == [("SECIDX", True)]

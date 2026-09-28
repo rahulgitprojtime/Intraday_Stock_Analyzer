@@ -1,7 +1,7 @@
 """Download real 1-min sessions from Groww into replay format.
 
 Writes the last N sessions ending at `--day` for the configured universe
-+ NIFTY into `IntradayCandleCache` layout (`<out>/<day>/<SYMBOL>.csv`),
++ NIFTY + the sector indices in `config/sectors.yaml` (M8) into `IntradayCandleCache` layout (`<out>/<day>/<SYMBOL>.csv`),
 readable by `ReplaySource`. Read-only market data; no orders
 (DECISIONS #8). Real data is still not strategy evidence without
 walk-forward validation (M10).
@@ -61,6 +61,7 @@ def main(argv=None) -> int:
     from src.broker.groww import GrowwAdapter
     from src.broker.groww_instruments import InstrumentMaster
     from src.data.universe import resolve_universe
+    from src.market.sector import load_sector_map
     from src.utils.config import load_settings, load_universe
 
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -80,7 +81,17 @@ def main(argv=None) -> int:
     for sym, reason in uni.rejected.items():
         print(f"SKIP  {sym}: {reason}")
     index = [i for i in uni.indices if i.trading_symbol == "NIFTY"]
-    report = download_sessions(adapter, uni.stocks + index, a.day, a.sessions, a.out)
+    sectors, problems = load_sector_map(load_universe().get("symbols") or [])
+    for problem in problems:
+        print(f"SKIP  sectors.yaml: {problem}")
+    sector_idx = []
+    for name in sorted({s["index"] for s in sectors.values()}):
+        try:
+            sector_idx.append(adapter.resolve_instrument(name, "NSE", "CASH"))
+        except ValueError as exc:
+            print(f"SKIP  {name}: {exc}")
+    report = download_sessions(adapter, uni.stocks + index + sector_idx, a.day, a.sessions,
+                               a.out)
     for sym, n in report.items():
         print(f"{'OK  ' if isinstance(n, int) else 'FAIL'}  {sym}: {n}")
     ok = sum(isinstance(n, int) and n == a.sessions for n in report.values())

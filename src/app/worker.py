@@ -22,6 +22,7 @@ from src.app.sources import ReplaySource
 from src.data.feed_store import FeedStore
 from src.data.models import Instrument
 from src.market.context import nifty_context
+from src.market.sector import SectorConfig, load_sector_map, sector_snapshot, stock_context
 from src.quantitative.in_play import InPlayConfig
 from src.quantitative.microstructure import MicroConfig, symbol_feed
 from src.recommendation.engine import SymbolInputs, evaluate_symbol, rank_recommendations
@@ -50,16 +51,23 @@ class WorkerContext:
     errors: list = field(default_factory=list)
     feed_store: FeedStore | None = None     # live only (M7)
     watchdog: FeedWatchdog | None = None
+    sectors: dict = field(default_factory=dict)          # M8 sector map
+    sector_cfg: SectorConfig = field(default_factory=SectorConfig)
+    sector_indices: list = field(default_factory=list)   # Instruments with candle data
 
 
 def base_context(source, stocks, index, source_name: str, demo: bool) -> WorkerContext:
     strategy, settings = load_strategy(), load_settings()
-    return WorkerContext(
+    sectors, problems = load_sector_map(load_universe().get("symbols") or [])
+    ctx = WorkerContext(
         source, list(stocks), index, EngineConfig.from_strategy(strategy),
         InPlayConfig.from_dict(strategy.get("in_play", {})),
         load_universe().get("filters", {}), int(settings["candles"]["stale_after_seconds"]),
         source_name, demo, MicroConfig.from_dict(strategy.get("microstructure", {})),
     )
+    ctx.sectors, ctx.sector_cfg = sectors, SectorConfig.from_dict(strategy.get("sector", {}))
+    ctx.errors += [f"sectors.yaml: {p}" for p in problems]
+    return ctx
 
 
 def prepare(ctx: WorkerContext, day: date) -> None:
@@ -113,15 +121,34 @@ def run_tick(ctx: WorkerContext, as_of: datetime, generated_at: datetime) -> dic
                            ctx.engine_cfg.market_ramp_pct)
     by_mode: dict = {m: [] for m in MODES}
     excluded, in_play, freshest = [], 0, None
+    bars_by: dict = {}
+    for inst in ctx.stocks:
+        try:
+            bars_by[inst.trading_symbol] = ctx.source.minute_candles(inst, as_of)
+        except Exception as exc:
+            errors.append(f"{inst.trading_symbol}: {exc}")
+    sector_bars: dict = {}
+    for inst in ctx.sector_indices:
+        try:
+            sector_bars[inst.trading_symbol] = ctx.source.minute_candles(inst, as_of)
+        except Exception as exc:        # missing sector data → UNAVAILABLE, not fatal
+            errors.append(f"{inst.trading_symbol}: {exc}")
+    snapshot = sector_snapshot(ctx.sectors, sector_bars, bars_by,
+                               market.nifty_change_pct if market.status == "available" else None,
+                               as_of, ctx.stale_after_seconds, ctx.sector_cfg)
     for inst in ctx.stocks:
         sym = inst.trading_symbol
         pr = ctx.preps.get(sym)
+        if sym not in bars_by:
+            excluded.append({"symbol": sym, "reason": "error during evaluation"})
+            continue
         try:
             feed = (symbol_feed(snap, sym, ctx.stale_after_seconds, ctx.micro_cfg)
                     if snap else None)
-            inputs = SymbolInputs(sym, ctx.source.minute_candles(inst, as_of),
-                                  pr.prep if pr else None, pr.volume_curve if pr else [],
-                                  pr.liquidity if pr else None, index_bars, feed)
+            inputs = SymbolInputs(sym, bars_by[sym], pr.prep if pr else None,
+                                  pr.volume_curve if pr else [], pr.liquidity if pr else None,
+                                  index_bars, feed,
+                                  stock_context(sym, snapshot, bars_by[sym], ctx.sector_cfg))
             ev = evaluate_symbol(inputs, market, as_of, ctx.engine_cfg, ctx.in_play_cfg,
                                  ctx.liquidity_filters, ctx.stale_after_seconds)
         except Exception as exc:
@@ -201,6 +228,11 @@ def _live_context() -> WorkerContext:
     source = LiveSource(adapter, IntradayCandleCache(data_dir / "cache" / "intraday"))
     ctx = base_context(source, uni.stocks, index, "live", False)
     ctx.errors += [f"{s}: {r}" for s, r in uni.rejected.items()]
+    for sec in ctx.sectors.values():
+        try:
+            ctx.sector_indices.append(adapter.resolve_instrument(sec["index"], "NSE", "CASH"))
+        except ValueError as exc:       # sector stays UNAVAILABLE
+            ctx.errors.append(f"sector index {sec['index']}: {exc}")
     from src.broker.groww_feed import LiveFeed
     feed_cfg = FeedConfig.from_dict(load_settings().get("feed", {}))
     ctx.feed_store = FeedStore()
@@ -236,11 +268,13 @@ def main(argv=None) -> int:
     if a.replay:
         if a.day is None:
             p.error("--day is required with --replay")
-        source = ReplaySource(a.replay, a.day)
+        sectors, _ = load_sector_map(load_universe().get("symbols") or [])
+        source = ReplaySource(a.replay, a.day, {s["index"] for s in sectors.values()})
         stocks, index = source.instruments()
         if not stocks:
             p.error(f"no candle files for {a.day} in {a.replay}")
         ctx = base_context(source, stocks, index, "replay", source.is_demo)
+        ctx.sector_indices = source.sector_indices()
         day, clock = a.day, replay_clock(a.day)
         delay = 60.0 / a.speed if a.speed > 0 else 0.0
     else:

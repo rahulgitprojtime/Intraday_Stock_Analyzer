@@ -24,9 +24,10 @@ ONE_MIN = timedelta(minutes=1)
 
 
 class ReplaySource:
-    def __init__(self, root: str | Path, day: date) -> None:
+    def __init__(self, root: str | Path, day: date, index_symbols=frozenset()) -> None:
         self.root = Path(root)
         self.day = day
+        self.index_symbols = frozenset(index_symbols)   # sector indices (M8), not stocks
         self._cache = IntradayCandleCache(self.root)
         self._loaded: dict = {}
         self._prep_cutoff = datetime.combine(day, SESSION_OPEN)   # prep never sees the replay day
@@ -35,12 +36,20 @@ class ReplaySource:
     def is_demo(self) -> bool:
         return (self.root / "DEMO").exists()
 
+    def _names(self) -> list[str]:
+        return sorted(p.stem for p in (self.root / self.day.isoformat()).glob("*.csv"))
+
     def instruments(self) -> tuple[list[Instrument], Instrument | None]:
-        names = sorted(p.stem for p in (self.root / self.day.isoformat()).glob("*.csv"))
-        stocks = [Instrument(n, Exchange.NSE, Segment.CASH) for n in names if n != INDEX_SYMBOL]
+        names = self._names()
+        stocks = [Instrument(n, Exchange.NSE, Segment.CASH) for n in names
+                  if n != INDEX_SYMBOL and n not in self.index_symbols]
         index = (Instrument(INDEX_SYMBOL, Exchange.NSE, Segment.CASH, is_index=True)
                  if INDEX_SYMBOL in names else None)
         return stocks, index
+
+    def sector_indices(self) -> list[Instrument]:
+        return [Instrument(n, Exchange.NSE, Segment.CASH, is_index=True)
+                for n in self._names() if n in self.index_symbols]
 
     def _load(self, inst: Instrument, day: date) -> list[Candle]:
         key = (inst.trading_symbol, day)

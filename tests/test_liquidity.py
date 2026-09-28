@@ -57,6 +57,19 @@ def test_ineligible_reasons():
     assert cheap.eligible is False and "price" in cheap.reason
 
 
+def test_spread_gate_uses_depth_when_present():
+    ts = datetime(2026, 9, 25, 9, 15)
+    hist, today = LiquidityHistory(1e6, 1e8, 20), [bar(ts, 500, 1000)]
+    filters = FILTERS | {"max_spread_pct": 0.5}
+    tight = evaluate_liquidity(hist, today, filters, spread_pct=0.04)
+    assert tight.eligible is True and tight.spread_pct == 0.04
+    assert "unchecked" not in tight.reason
+    wide = evaluate_liquidity(hist, today, filters, spread_pct=0.8)
+    assert wide.eligible is False and "spread above maximum" in wide.reason
+    unknown = evaluate_liquidity(hist, today, filters)
+    assert unknown.eligible is True and "spread unchecked" in unknown.reason
+
+
 def test_missing_history_is_unavailable_not_invented():
     liq = evaluate_liquidity(None, [], FILTERS)
     assert liq.eligible is None and liq.score is None and liq.avg_traded_value is None

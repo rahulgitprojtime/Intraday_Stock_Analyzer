@@ -8,6 +8,7 @@ from src.market.context import MarketContext, nifty_context
 from src.quantitative.daily_prep import DailyPrep
 from src.quantitative.in_play import InPlayConfig
 from src.quantitative.liquidity import LiquidityHistory
+from src.quantitative.microstructure import SymbolFeed
 from src.recommendation.engine import (
     SymbolInputs,
     avoid_reasons,
@@ -54,9 +55,10 @@ MARKET = nifty_context(INDEX, AS_OF, 120, CFG.market_ramp_pct)
 
 
 def evaluate(bars=None, *, sym="HOT", prep=PREP, liq=LIQ, market=MARKET, as_of=AS_OF,
-             curve=CURVE, cfg=CFG, ip_cfg=IP_CFG):
-    inp = SymbolInputs(sym, bars if bars is not None else trend_bars(sym), prep, curve, liq, INDEX)
-    return evaluate_symbol(inp, market, as_of, cfg, ip_cfg, FILTERS, 120)
+             curve=CURVE, cfg=CFG, ip_cfg=IP_CFG, feed=None, filters=FILTERS):
+    inp = SymbolInputs(sym, bars if bars is not None else trend_bars(sym), prep, curve, liq, INDEX,
+                       feed)
+    return evaluate_symbol(inp, market, as_of, cfg, ip_cfg, filters, 120)
 
 
 def walk(obj, key=None):
@@ -227,3 +229,53 @@ def test_confluence_changes_final_score():
                      ip_cfg=ip_all).recommendations["SCALP"]
     assert rec.score == pytest.approx(plain.score + bonus.points)
     assert any(r.kind == "setup" and "families" in r.text for r in rec.reasons)
+
+
+FEED = SymbolFeed(spread_pct=0.04, imbalance=0.32, tick_velocity=1.8, micro_score=80.0,
+                  last_tick_age_s=1.0, depth_age_s=1.0)
+
+
+def comp(rec, name):
+    return next(c for c in rec.components if c.name == name)
+
+
+def test_microstructure_component_is_scalp_only():
+    ev = evaluate(feed=FEED)
+    scalp, day = ev.recommendations["SCALP"], ev.recommendations["DAY"]
+    assert comp(scalp, "microstructure").status == "available"
+    assert comp(scalp, "microstructure").value == 80.0
+    assert comp(day, "microstructure").status == "unavailable"
+    baseline = evaluate().recommendations["DAY"]
+    assert day.score == baseline.score and day.components == baseline.components
+
+
+def test_no_feed_leaves_component_unavailable():
+    scalp = evaluate().recommendations["SCALP"]
+    assert comp(scalp, "microstructure").status == "unavailable"
+    assert scalp.quantitative["microstructure"] is None
+
+
+def test_feed_changes_scalp_blend():
+    ip_all = replace(IP_CFG, min_score=0.0, min_rvol=0.0)     # keep the WATCH cap away
+    hi = evaluate(feed=replace(FEED, micro_score=100.0), ip_cfg=ip_all).recommendations["SCALP"]
+    lo = evaluate(feed=replace(FEED, micro_score=0.0), ip_cfg=ip_all).recommendations["SCALP"]
+    assert hi.score > lo.score
+
+
+def test_feed_reasons_are_traceable_and_show_no_prices():
+    rec = evaluate(feed=FEED).recommendations["SCALP"]
+    texts = [r.text for r in rec.reasons]
+    assert "Spread 0.04%" in texts
+    assert "Bid/ask imbalance +0.32 (more bids)" in texts
+    assert "Tick velocity 1.8x the 5-min average" in texts
+    leaves = list(walk({k: v for k, v in rec.to_dict().items() if k != "reasons"}))
+    for reason in rec.reasons:
+        for pair in reason.evidence.items():
+            assert pair in leaves, (reason, pair)
+    d = rec.to_dict()
+    assert not [k for k in all_keys(d) if any(b in k.lower() for b in BANNED_KEYS)]
+
+
+def test_wide_spread_excludes_in_both_modes():
+    ev = evaluate(feed=replace(FEED, spread_pct=0.9), filters=FILTERS | {"max_spread_pct": 0.5})
+    assert ev.recommendations == {} and "spread above maximum" in ev.excluded_reason

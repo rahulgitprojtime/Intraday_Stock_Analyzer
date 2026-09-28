@@ -2,8 +2,9 @@
 
 Eligibility gate from `universe.yaml` `filters` so an illiquid stock never
 ranks on a strong pattern alone. History comes from the same 1-min
-request `build_prep` already makes. Spread needs market depth (M7) and is
-reported as unavailable. Missing history → unavailable, never invented.
+request `build_prep` already makes. Spread comes from live depth (M7) when
+fresh; otherwise it is reported as unchecked. Missing history →
+unavailable, never invented.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ class Liquidity:
     avg_daily_volume: float | None
     avg_traded_value: float | None
     current_traded_value: float | None
-    spread_pct: float | None       # needs market depth (M7)
+    spread_pct: float | None       # live depth (M7); None = unchecked
     score: float | None
     reason: str
 
@@ -56,12 +57,14 @@ def liquidity_score(avg_traded_value: float | None, min_value: float | None) -> 
 
 
 def evaluate_liquidity(
-    history: LiquidityHistory | None, today: Sequence[Candle], filters: dict
+    history: LiquidityHistory | None, today: Sequence[Candle], filters: dict,
+    spread_pct: float | None = None,
 ) -> Liquidity:
     bars = [c for c in today if c.is_complete]
     current = sum(c.close * c.volume for c in bars) if bars else None
     if history is None:
-        return Liquidity(None, None, None, current, None, None, "liquidity history unavailable")
+        return Liquidity(None, None, None, current, spread_pct, None,
+                         "liquidity history unavailable")
     fails = []
     min_price = filters.get("min_price")
     if min_price and bars and bars[-1].close < min_price:
@@ -70,7 +73,11 @@ def evaluate_liquidity(
         fails.append("average daily volume below minimum")
     if history.avg_traded_value < filters.get("min_avg_traded_value", 0):
         fails.append("average traded value below minimum")
-    reason = "; ".join(fails) if fails else "meets liquidity filters (spread unchecked until M7)"
+    max_spread = filters.get("max_spread_pct")
+    if spread_pct is not None and max_spread and spread_pct > max_spread:
+        fails.append("spread above maximum")
+    checked = "" if spread_pct is not None else " (spread unchecked)"
+    reason = "; ".join(fails) if fails else f"meets liquidity filters{checked}"
     score = liquidity_score(history.avg_traded_value, filters.get("min_avg_traded_value"))
     return Liquidity(not fails, history.avg_daily_volume, history.avg_traded_value, current,
-                     None, score, reason)
+                     spread_pct, score, reason)

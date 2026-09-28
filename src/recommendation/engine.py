@@ -19,6 +19,7 @@ from src.market.context import MarketContext
 from src.quantitative.daily_prep import DailyPrep
 from src.quantitative.in_play import InPlayConfig, InPlayResult, score_in_play
 from src.quantitative.liquidity import Liquidity, LiquidityHistory, evaluate_liquidity
+from src.quantitative.microstructure import SymbolFeed
 from src.quantitative.setups import (
     SetupSignal,
     SetupState,
@@ -66,6 +67,7 @@ class SymbolInputs:
     volume_curve: Sequence[float]
     liquidity: LiquidityHistory | None
     index_bars: Sequence[Candle]        # NIFTY 1-min bars up to as_of
+    feed: SymbolFeed | None = None      # live feed metrics (M7); None in replay/stale
 
 
 @dataclass(frozen=True)
@@ -112,7 +114,16 @@ def avoid_reasons(best: SetupSignal | None, category: str) -> tuple[str, ...]:
     return tuple(out)
 
 
-def _quantitative(sscore: float, ip: InPlayResult, liq: Liquidity) -> dict:
+def _micro_block(feed: SymbolFeed | None) -> dict | None:
+    if feed is None:
+        return None
+    return {"spread_pct": feed.spread_pct, "imbalance": feed.imbalance,
+            "tick_velocity": feed.tick_velocity, "micro_score": feed.micro_score,
+            "last_tick_age_s": feed.last_tick_age_s, "depth_age_s": feed.depth_age_s}
+
+
+def _quantitative(sscore: float, ip: InPlayResult, liq: Liquidity,
+                  feed: SymbolFeed | None) -> dict:
     c = ip.components
     volatility = None
     if ip.atr_pct is not None and ip.range_expansion is not None:
@@ -133,7 +144,27 @@ def _quantitative(sscore: float, ip: InPlayResult, liq: Liquidity) -> dict:
                       "avg_traded_value": liq.avg_traded_value,
                       "current_traded_value": liq.current_traded_value,
                       "spread_pct": liq.spread_pct},
+        "microstructure": _micro_block(feed),
     }
+
+
+def _feed_reasons(feed: SymbolFeed | None, mode: str) -> list[Reason]:
+    """Spread in both modes (a liquidity fact); imbalance/velocity feed the
+    SCALP score only. Never bid/ask prices (no price levels, #11)."""
+    if feed is None:
+        return []
+    out = []
+    if feed.spread_pct is not None:
+        out.append(Reason("liquidity", f"Spread {feed.spread_pct:.2f}%",
+                          {"spread_pct": feed.spread_pct}))
+    if mode == "SCALP" and feed.imbalance is not None:
+        side = "more bids" if feed.imbalance > 0 else "more offers" if feed.imbalance < 0             else "balanced"
+        out.append(Reason("momentum", f"Bid/ask imbalance {feed.imbalance:+.2f} ({side})",
+                          {"imbalance": feed.imbalance}))
+    if mode == "SCALP" and feed.tick_velocity is not None:
+        out.append(Reason("momentum", f"Tick velocity {feed.tick_velocity:.1f}x the 5-min "
+                          "average", {"tick_velocity": feed.tick_velocity}))
+    return out
 
 
 def _reasons(signals, ip, market, liq, adjustments, forced) -> tuple[Reason, ...]:
@@ -173,7 +204,8 @@ def evaluate_symbol(
     if dq.status != "OK":
         missing = f" (missing: {', '.join(dq.missing_inputs)})" if dq.missing_inputs else ""
         return SymbolEvaluation(inp.symbol, excluded_reason=f"data {dq.status.lower()}{missing}")
-    liq = evaluate_liquidity(inp.liquidity, bars, liquidity_filters)
+    liq = evaluate_liquidity(inp.liquidity, bars, liquidity_filters,
+                             inp.feed.spread_pct if inp.feed else None)
     if liq.eligible is not True:
         return SymbolEvaluation(inp.symbol, excluded_reason=f"liquidity: {liq.reason}")
 
@@ -187,10 +219,13 @@ def evaluate_symbol(
         sscore, best = setup_score(signals, cfg)
         families, bonus = confluence(signals, cfg)
         w = cfg.weights.get
+        micro = inp.feed.micro_score if (mode == "SCALP" and inp.feed) else None
         comps = (
             Component("setup", sscore, w("setup"), AVAILABLE),
             Component("in_play", ip.score, w("in_play"), AVAILABLE),
             Component("market_context", market.score, w("market_context"), market.status),
+            Component("microstructure", micro, w("microstructure") if micro is not None else None,
+                      AVAILABLE if micro is not None else UNAVAILABLE),
             Component("liquidity", liq.score, w("liquidity"),
                       AVAILABLE if liq.score is not None else UNAVAILABLE),
             Component("sector_context", None, w("sector_context"), UNAVAILABLE),
@@ -234,10 +269,11 @@ def evaluate_symbol(
             symbol=inp.symbol, mode=mode, as_of=as_of.isoformat(), score=score,
             category="AVOID" if exclusions else category,
             profile=profile(ip.is_in_play, best), components=comps,
-            quantitative=_quantitative(sscore, ip, liq), setup=setup_block,
+            quantitative=_quantitative(sscore, ip, liq, inp.feed), setup=setup_block,
             market_context=market_block, sector_context=sector_unavailable(),
             qualitative=qualitative_unavailable(), adjustments=tuple(adjustments),
-            reasons=_reasons(signals, ip, market, liq, adjustments, forced), data_quality=dq,
+            reasons=_reasons(signals, ip, market, liq, adjustments,
+                             _feed_reasons(inp.feed, mode) + forced), data_quality=dq,
             eligible_for_top_n=not exclusions, exclusion_reasons=exclusions,
         )
     return SymbolEvaluation(inp.symbol, recs, None, ip.is_in_play)

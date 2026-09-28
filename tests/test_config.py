@@ -14,9 +14,9 @@ def test_settings_has_no_trading_modes():
     assert "live_trading_confirmed" not in settings
 
 
-def test_engine_weights_are_m6_baseline_and_sum_to_one():
+def test_engine_weights_are_m7_baseline_and_sum_to_one():
     w = load_strategy()["engine"]["weights"]
-    assert set(w) == {"setup", "in_play", "market_context"}
+    assert set(w) == {"setup", "in_play", "market_context", "microstructure"}
     assert abs(sum(w.values()) - 1.0) < 1e-9
 
 

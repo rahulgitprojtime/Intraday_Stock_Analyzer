@@ -9,9 +9,10 @@
 # excluded from the blend, never defaulted.
 engine:
   weights:                 # positive, must sum to 1.0
-    setup: 0.55
-    in_play: 0.35
+    setup: 0.50
+    in_play: 0.30
     market_context: 0.10
+    microstructure: 0.10     # SCALP only, live feed (M7); unavailable -> renormalized
   state_points: {TRIGGERED: 100, FORMING: 60, EXTENDED: 30, FAILED: 0, NONE: 0}
   # Confluence: additive bonus by number of independent setup families
   # TRIGGERED/FORMING (price_structure, vwap, trend, momentum,

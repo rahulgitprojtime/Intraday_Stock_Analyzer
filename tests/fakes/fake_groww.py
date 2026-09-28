@@ -24,6 +24,7 @@ class FakeGrowwAPI:
     CANDLE_INTERVAL_MIN_15 = "15minute"
     CANDLE_INTERVAL_MIN_30 = "30minute"
     CANDLE_INTERVAL_HOUR_1 = "1hour"
+    CANDLE_INTERVAL_DAY = "1day"
 
     access_token_calls: list[dict] = []
     instances: list["FakeGrowwAPI"] = []

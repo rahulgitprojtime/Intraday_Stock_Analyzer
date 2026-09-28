@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Sequence
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from src.broker.base import (
     AuthenticationError,
@@ -119,6 +119,8 @@ _MAX_WINDOW_DAYS: dict[int, int] = {
     10: 90, 15: 90, 30: 90,
     60: 180, 240: 180,
 }
+
+MAX_DAILY_WINDOW_DAYS = 180   # verified live 2026-09-28 (API error above this)
 
 _RETRYABLE = (RateLimitError, GrowwAPITimeoutException)
 
@@ -359,6 +361,32 @@ class GrowwAdapter(BrokerAdapter):
             windows.append((cur, win_end))
             cur = win_end
         return windows or [(start, end)]
+
+    def get_daily_candles(self, instrument: Instrument, start: date, end: date) -> list[Candle]:
+        """Daily candles in one request (M11 volume scan). Verified live
+        2026-09-28: CANDLE_INTERVAL_DAY rows are stamped 00:00 (so the
+        intraday session filter must not apply) and a request may span at
+        most 180 days. Null volume → 0; rows with null prices skipped."""
+        self._ensure_authenticated()
+        if (end - start).days > MAX_DAILY_WINDOW_DAYS:
+            raise ValueError(f"daily candles: at most {MAX_DAILY_WINDOW_DAYS} days per request")
+        resp = self._call(
+            self._client.get_historical_candles,
+            exchange=self._exchange_const(instrument),
+            segment=self._segment_const(instrument),
+            groww_symbol=self._groww_symbol(instrument),
+            start_time=f"{start.isoformat()} 09:15:00",
+            end_time=f"{end.isoformat()} 15:30:00",
+            candle_interval=self._client.CANDLE_INTERVAL_DAY,
+        )
+        out = []
+        for row in resp.get("candles", []):
+            ts_raw, o, h, l, c, v = row[0], row[1], row[2], row[3], row[4], row[5]
+            if None in (o, h, l, c):
+                continue
+            out.append(Candle(instrument, 1440, self._parse_candle_timestamp(ts_raw), float(o),
+                              float(h), float(l), float(c), int(v) if v is not None else 0))
+        return sorted(out, key=lambda c: c.timestamp)
 
     def get_historical_candles(self, request: HistoricalCandleRequest) -> list[Candle]:
         self._ensure_authenticated()

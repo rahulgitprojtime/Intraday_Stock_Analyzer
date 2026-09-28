@@ -1,0 +1,31 @@
+# Paper trading / outcome evaluation (M10, DECISIONS #20). SIMULATION ONLY:
+# virtual positions measured against real candles; no order API exists or
+# is called. Off by default. These are starting values to be *evaluated*,
+# not optimised — change them only through an M10 experiment.
+
+enabled: false
+mode: DAY                     # which recommendation list feeds entries (SCALP | DAY)
+quantity: 10                  # fixed shares per trade (R-multiples normalise across prices)
+
+entry:
+  minimum_category: CANDIDATE # STRONG_CANDIDATE > CANDIDATE > WATCH > NEUTRAL
+  minimum_score: 65
+  require_triggered_setup: true
+  require_in_play: false
+  max_rank: 10                # only the top-N list
+  max_open_positions: 3
+  max_trades_per_symbol_per_day: 1
+  no_entry_after: "15:00"
+
+risk:                         # fixed at entry, never moved
+  stop_atr_mult: 0.25         # stop = fill - 0.25 x daily ATR (prior sessions only)
+  stop_fallback_pct: 0.6      # when daily ATR is unavailable
+  target_r: 1.5               # target = fill + 1.5 x initial risk
+
+fills:
+  # Signal at the close of minute T -> fill at the OPEN of the next bar.
+  # A bar touching both stop and target counts as STOP_LOSS (sequence
+  # unknown from OHLC). Gap through the stop fills at the (worse) open.
+  slippage_bps: 5             # applied against us on entry and exit
+  charges_pct_round_trip: 0.05  # brokerage + STT + fees, % of entry value
+  eod_exit: "15:20"           # square-off: close of the bar ending at this time

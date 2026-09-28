@@ -43,10 +43,12 @@ def _items(payload) -> list[tuple[str, dict | None]]:
 
 
 def _side(book: dict, best: Callable) -> tuple[float, float, float]:
-    """(best price, qty at best, total qty) over levels with price > 0."""
+    """(best price, qty at best, total qty) over filled levels; empty
+    levels (price or qty 0) are skipped; a side with none is invalid."""
     levels = [(float(v["price"]), float(v["qty"])) for v in (book or {}).values()]
-    if not levels or any(p <= 0 or q < 0 for p, q in levels):
-        raise ValueError("empty or non-positive book side")
+    levels = [(p, q) for p, q in levels if p > 0 and q > 0]
+    if not levels:
+        raise ValueError("no filled levels on a book side")
     price, qty = best(levels, key=lambda pq: pq[0])
     return price, qty, sum(q for _, q in levels)
 
@@ -171,7 +173,7 @@ class LiveFeed:
                 continue
             for key, data in _items(payload):
                 sym = self._by_key.get(str(key))
-                if sym is None:
+                if sym is None or data is None:     # null = no message yet (verified live)
                     continue
                 try:
                     parse(sym, data)

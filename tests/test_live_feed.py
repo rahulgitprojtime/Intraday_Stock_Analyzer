@@ -87,7 +87,6 @@ def test_poll_once_parses_ltp_depth_index(feed):
     {"buyBook": {"1": {"price": 100, "qty": 5}}, "sellBook": {"1": {"price": 100.1, "qty": 5}}},
     {"tsInMillis": MS, "buyBook": {"1": {"price": "x", "qty": 5}},
      "sellBook": {"1": {"price": 100.1, "qty": 5}}},
-    None,
 ])
 def test_bad_depth_payloads_counted_not_raised(feed, payload):
     lf, store = feed
@@ -143,3 +142,27 @@ def test_poller_thread_runs_until_stopped():
         time.sleep(0.01)
     lf.stop()
     assert store.snapshot(datetime.now()).symbols["RELIANCE"].ltp == 1.0
+
+
+def test_null_payload_is_no_data_yet_not_bad(feed):
+    """Live 2026-09-28: getters return null data for a subscribed topic until
+    its first message arrives."""
+    lf, store = feed
+    lf.start()
+    sdk = FakeGrowwFeed.instances[-1]
+    sdk.ltp, sdk.depth = {"2885": None}, {"2885": None}
+    lf.poll_once()
+    snap = store.snapshot(T)
+    assert snap.bad_payloads == 0 and "RELIANCE" not in snap.symbols
+
+
+def test_empty_zero_price_levels_are_skipped_not_fatal(feed):
+    lf, store = feed
+    lf.start()
+    payload = book()
+    payload["buyBook"]["3"] = {"price": 0, "qty": 0}
+    payload["sellBook"]["3"] = {"price": 0, "qty": 0}
+    FakeGrowwFeed.instances[-1].depth = {"2885": payload}
+    lf.poll_once()
+    d = store.snapshot(T).symbols["RELIANCE"].depth
+    assert (d.best_bid, d.best_ask, d.total_bid_qty, d.total_ask_qty) == (1206.3, 1206.4, 150, 100)

@@ -28,6 +28,7 @@ class SymbolFeedState:
     last_tick_age_s: float | None
     ticks_1m: int
     ticks_5m_avg: float          # ticks in the last 5 min / 5
+    observed_s: float | None     # since the first tick; < 5 min → average understated
     depth: DepthSnapshot | None
     depth_age_s: float | None
 
@@ -50,6 +51,7 @@ class FeedStore:
         self._depth: dict[str, tuple[DepthSnapshot, datetime]] = {}
         self._arrivals: dict[str, deque[datetime]] = defaultdict(deque)
         self._last_at: dict[str, datetime] = {}
+        self._first_at: dict[str, datetime] = {}
         self._last_any: datetime | None = None
         self._bad = 0
 
@@ -60,6 +62,8 @@ class FeedStore:
             q.append(at)
             while q and q[0] < at - WINDOW:
                 q.popleft()
+            if symbol not in self._first_at or at < self._first_at[symbol]:
+                self._first_at[symbol] = at
             if symbol not in self._last_at or at > self._last_at[symbol]:
                 self._last_at[symbol] = at
             if self._last_any is None or at > self._last_any:
@@ -100,6 +104,7 @@ class FeedStore:
                     last_tick_age_s=_age(now, self._last_at.get(sym)),
                     ticks_1m=in_1m,
                     ticks_5m_avg=in_5m / 5,
+                    observed_s=_age(now, self._first_at.get(sym)),
                     depth=d[0] if d else None,
                     depth_age_s=_age(now, d[1]) if d else None,
                 )

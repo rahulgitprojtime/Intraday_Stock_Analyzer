@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from src.data.feed_store import FeedSnapshot
+from src.data.feed_store import WINDOW, FeedSnapshot
 
 
 @dataclass(frozen=True)
@@ -65,7 +65,8 @@ def micro_score(imb: float | None, vel: float | None, cfg: MicroConfig) -> float
 def symbol_feed(snap: FeedSnapshot, symbol: str, stale_after_s: float,
                 cfg: MicroConfig) -> SymbolFeed | None:
     """None when the symbol has no recent ticks; depth metrics None when
-    depth is missing or older than `stale_after_s`."""
+    depth is missing or older than `stale_after_s`; velocity None until
+    5 min of ticks have been observed."""
     st = snap.symbols.get(symbol)
     if st is None or st.last_tick_age_s is None or st.last_tick_age_s > stale_after_s:
         return None
@@ -73,6 +74,7 @@ def symbol_feed(snap: FeedSnapshot, symbol: str, stale_after_s: float,
     if st.depth is not None and st.depth_age_s is not None and st.depth_age_s <= stale_after_s:
         sp = spread_pct(st.depth.best_bid, st.depth.best_ask)
         imb = imbalance(st.depth.total_bid_qty, st.depth.total_ask_qty)
-    vel = tick_velocity(st.ticks_1m, st.ticks_5m_avg)
+    warm = st.observed_s is not None and st.observed_s >= WINDOW.total_seconds()
+    vel = tick_velocity(st.ticks_1m, st.ticks_5m_avg) if warm else None   # avg understated
     return SymbolFeed(sp, imb, vel, micro_score(imb, vel, cfg), st.last_tick_age_s,
                       st.depth_age_s)

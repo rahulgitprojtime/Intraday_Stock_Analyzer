@@ -50,8 +50,10 @@ def test_config_from_strategy_yaml():
     assert cfg == MicroConfig()
 
 
-def store_with(depth_age_s=0, tick_age_s=0):
+def store_with(depth_age_s=0, tick_age_s=0, warm=True):
     s = FeedStore()
+    if warm:
+        s.count_tick("AAA", T - timedelta(seconds=tick_age_s + 300))   # observed 5+ min
     for i in range(60):
         s.count_tick("AAA", T - timedelta(seconds=tick_age_s + i))
     s.put_ltp(Tick("AAA", T, 100.0), T)
@@ -63,7 +65,7 @@ def store_with(depth_age_s=0, tick_age_s=0):
 def test_symbol_feed_fresh():
     f = symbol_feed(store_with().snapshot(T), "AAA", 120, CFG)
     assert f.spread_pct == pytest.approx(0.1) and f.imbalance == pytest.approx(0.5)
-    assert f.tick_velocity == pytest.approx(60 / 12)             # 60 ticks, 5-min avg 12
+    assert f.tick_velocity == pytest.approx(60 / 12.2)           # 60 in 1 min, 61 in 5
     assert f.micro_score == pytest.approx(100)
     assert f.last_tick_age_s == 0 and f.depth_age_s == 0
 
@@ -77,3 +79,11 @@ def test_symbol_feed_stale_depth_keeps_velocity_only():
 def test_symbol_feed_none_when_ticks_stale_or_unknown():
     assert symbol_feed(store_with(tick_age_s=200).snapshot(T), "AAA", 120, CFG) is None
     assert symbol_feed(FeedStore().snapshot(T), "AAA", 120, CFG) is None
+
+
+def test_velocity_unavailable_during_warm_up():
+    """Live 2026-09-28: with < 5 min observed, the 5-min average is
+    understated and velocity read 5.0 for every symbol."""
+    f = symbol_feed(store_with(warm=False).snapshot(T), "AAA", 120, CFG)
+    assert f.tick_velocity is None
+    assert f.micro_score == pytest.approx(100)          # imbalance only, renormalized

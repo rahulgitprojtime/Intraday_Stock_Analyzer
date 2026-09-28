@@ -54,6 +54,20 @@ rvol:
 regime:
   volatility_lookback_days: 20
 
+# Sector confirmation (M8). rs = sector index % since open minus NIFTY's;
+# peers = other universe members of the sector up since open.
+# CONFIRMED: rs >= confirm_rs and (fewer than min_peers peers, or peer
+# share up >= confirm_peers). WEAK: rs <= weak_rs, or (>= min_peers peers
+# and share up <= weak_peers) -> capped at WATCH. Illustrative, unvalidated.
+sector:
+  confirm_rs: 0.2
+  weak_rs: -0.2
+  confirm_peers: 0.6
+  weak_peers: 0.4
+  min_peers: 2
+  rs_ramp: [-0.5, 0.5]
+  weights: {rs: 0.6, peers: 0.4}
+
 # Live-feed microstructure (M7, SCALP only). Imbalance = (bid qty - ask
 # qty) / total over the depth payload; velocity = ticks in the last
 # minute / 5-min average. Linear ramps to 0-100, blended by weight (sum 1).

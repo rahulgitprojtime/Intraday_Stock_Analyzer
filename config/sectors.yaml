@@ -1,0 +1,34 @@
+# Sector map for M8 sector confirmation. User-maintained: the Groww
+# instrument CSV has no sector field. `index` must be an NSE index symbol
+# in the instrument CSV; `members` must be universe symbols; one sector per
+# stock (first listing wins). Stocks not listed (LT, BHARTIARTL, TITAN)
+# have no sector index: sector check shows "not available".
+# NIFTYCDTY (commodities) membership is a best-effort mapping — verify.
+sectors:
+  PVT_BANK:
+    index: NIFTYPVTBANK
+    members: [HDFCBANK, ICICIBANK, AXISBANK, KOTAKBANK]
+  PSU_BANK:
+    index: NIFTYPSUBANK
+    members: [SBIN]
+  FIN_SERVICES:
+    index: FINNIFTY
+    members: [BAJFINANCE]
+  IT:
+    index: NIFTYIT
+    members: [INFY, TCS, HCLTECH, WIPRO]
+  AUTO:
+    index: NIFTYAUTO
+    members: [MARUTI, M&M]
+  FMCG:
+    index: NIFTYFMCG
+    members: [ITC, HINDUNILVR]
+  METAL:
+    index: NIFTYMETAL
+    members: [TATASTEEL]
+  PHARMA:
+    index: NIFTYPHARMA
+    members: [SUNPHARMA]
+  COMMODITIES:
+    index: NIFTYCDTY
+    members: [RELIANCE, ONGC, NTPC, POWERGRID, ULTRACEMCO, ADANIENT]

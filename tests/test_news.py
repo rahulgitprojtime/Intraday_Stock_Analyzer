@@ -73,3 +73,10 @@ def test_aggregate_positive_mixed_neutral_and_none():
     assert aggregate_news(neutral, "WIPRO", RULES, NOW, 18, 5)["verdict"] == "NEUTRAL"
     none = aggregate_news([], "TCS", RULES, NOW, 18, 5)
     assert none["verdict"] == "NO_RELEVANT_INFORMATION" and none["items"] == []
+
+
+def test_source_suffix_stripped_case_insensitively():
+    xml = (b'<rss><channel><item><title>Elice IPO grows - CHOSUNBIZ</title><link>https://x</link>'
+           b'<pubDate>Mon, 28 Sep 2026 02:24:16 GMT</pubDate><source>Chosunbiz</source></item>'
+           b'</channel></rss>')
+    assert parse_rss(xml)[0].title == "Elice IPO grows"

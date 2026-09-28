@@ -43,7 +43,7 @@ def parse_rss(xml: bytes) -> list[NewsItem]:
     for it in root.findall("./channel/item"):
         title = (it.findtext("title") or "").strip()
         source = (it.findtext("source") or "").strip()
-        if source and title.endswith(f" - {source}"):
+        if source and title.lower().endswith(f" - {source.lower()}"):
             title = title[: -len(source) - 3].rstrip()
         try:
             published = parsedate_to_datetime(it.findtext("pubDate") or "")

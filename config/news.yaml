@@ -21,9 +21,9 @@ aliases:
   TCS: [TCS, Tata Consultancy Services, Tata Consultancy]
   SBIN: [State Bank of India, SBI]
   AXISBANK: [Axis Bank]
-  KOTAKBANK: [Kotak Mahindra Bank, Kotak Bank, Kotak]
+  KOTAKBANK: [Kotak Mahindra Bank, Kotak Bank]
   LT: [Larsen & Toubro, Larsen and Toubro, L&T]
-  ITC: [ITC]
+  ITC: [ITC Ltd, ITC Limited, ITC shares, ITC share, ITC stock]
   BHARTIARTL: [Bharti Airtel, Airtel]
   HINDUNILVR: [Hindustan Unilever, HUL]
   BAJFINANCE: [Bajaj Finance]
@@ -34,11 +34,24 @@ aliases:
   HCLTECH: [HCLTech, HCL Technologies, HCL Tech]
   WIPRO: [Wipro]
   NTPC: [NTPC]
-  POWERGRID: [Power Grid Corporation, Power Grid, POWERGRID]
+  POWERGRID: [Power Grid Corporation, Power Grid Corp, POWERGRID, Power Grid shares]
   ONGC: [ONGC, Oil and Natural Gas Corporation]
   ADANIENT: [Adani Enterprises]
   ULTRACEMCO: [UltraTech Cement, UltraTech]
-  TITAN: [Titan Company, Titan]
+  TITAN: [Titan Company, Titan Co, Titan shares, Titan share, Titan stock, Tanishq]
+
+# Aliases that are also ordinary words: matched only when capitalised as
+# written here ("reliance on state rises" is not RIL; live 2026-09-28).
+case_sensitive_aliases: [Reliance, Titan Co]
+
+# Look-alike companies: blanked out before the name check (live misses
+# 2026-09-28: L&T Finance, NTPC Green Energy, Airtel Africa, M&M Financial).
+exclude:
+  LT: [L&T Finance, L&T Technology, L&T Tech, LTIMindtree]
+  NTPC: [NTPC Green]
+  BHARTIARTL: [Airtel Africa, Airtel Money]
+  M&M: [Mahindra and Mahindra Financial, Mahindra & Mahindra Financial, M&M Financial]
+  RELIANCE: [Reliance Power, Reliance Infrastructure, Reliance Infra, Reliance Capital, Reliance Communications, Reliance Home Finance, Reliance Nippon, Reliance General]
 
 # Quote/price-tracker pages are not news.
 skip_sources: [Upstox, Groww, HDFC Sky]      # seen as price pages 2026-09-28; extend as found
@@ -46,12 +59,12 @@ skip_title_phrases: [share price live, stock price live, share price today, stoc
 
 # Headlines about many stocks are market roundups, not a catalyst for one.
 roundup_min_companies: 3
-roundup_phrases: [stocks to watch, stocks in focus, stock picks, top gainers, top losers, buzzing stocks, stocks to buy, trade setup, 52-week low, 52-week lows, 52-week high, 52-week highs, market live, sensex, nifty today]
+roundup_phrases: [stocks today, sector stocks, group stocks, stocks to watch, stocks in focus, stock picks, top gainers, top losers, buzzing stocks, stocks to buy, trade setup, 52-week low, 52-week lows, 52-week high, 52-week highs, market live, sensex, nifty today]
 
 speculation_phrases: [should you, is it time, will it, can it, what next, here's why, explained]
 
 negations: [denies, deny, denied, refutes, rejects, dismisses, "no", not, without, clarifies]
 
-upward: [order win, wins order, bags, bags order, bags * order, bags * deal, bags * contract, wins * order, wins * contract, raises * target, hikes * target, signs * deal, secures order, bags contract, wins contract, bags deal, wins deal, signs deal, upgrade, upgrades, upgraded, raises target, target raised, hikes target, buy rating, overweight, outperform, beats estimates, beat estimates, profit rises, profit jumps, profit surges, profit up, net profit rises, revenue jumps, record high, all-time high, approval, approves, gets nod, receives nod, buyback, bonus issue, dividend, stake buy, raises stake, acquires, acquisition, expansion, capacity addition, launches, surge, surges, soars, rally, rallies, jump, jumps, gains]
+upward: [order win, wins order, bags, bags order, bags * order, bags * deal, bags * contract, wins * order, wins * contract, raises * target, hikes * target, signs * deal, secures order, bags contract, wins contract, bags deal, wins deal, signs deal, upgrade, upgrades, upgraded, raises target, target raised, hikes target, buy rating, overweight, outperform, beats estimates, beat estimates, profit rises, profit jumps, profit surges, profit up, net profit rises, revenue jumps, record high, all-time high, approval, approves, gets nod, receives nod, buyback, bonus issue, dividend, stake buy, raises stake, acquires, acquisition, expansion, capacity addition, surge, surges, soars, rally, rallies, jump, jumps, gains, rise, rises, buy call, maintains buy, retains buy, reiterates buy, buying, upside, bullish]
 
-downward: [downgrade, downgrades, downgraded, cuts target, cuts * target, lowers * target, slashes * target, target cut, lowers target, sell rating, underweight, underperform, misses estimates, profit falls, profit drops, profit declines, net loss, loss widens, revenue falls, probe, raid, penalty, fined, fine of, ban, bans, resigns, resignation, fraud, default, pledge, stake sale, block deal, slump, slumps, plunge, plunges, tanks, crashes, falls, slides, declines, drops]
+downward: [downgrade, downgrades, downgraded, cuts target, cuts * target, lowers * target, slashes * target, target cut, lowers target, sell rating, underweight, underperform, misses estimates, profit falls, profit drops, profit declines, net loss, loss widens, revenue falls, probe, raid, penalty, fined, fine of, ban, bans, resigns, resignation, fraud, default, pledge, stake sale, block deal, slump, slumps, plunge, plunges, tanks, crashes, fall, falls, slide, slides, slip, slips, decline, declines, drop, drops, selling, bearish, shares down]

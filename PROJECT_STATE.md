@@ -12,7 +12,7 @@ by intraday traders (ORB, VWAP, PDH, CPR, EMA pullback, momentum burst),
 Scalp (1-min) and Day (5/15-min) modes, stocks-in-play pre-filter,
 time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 
-## Current milestone: M11 ✅ (market-wide volume scan) → next: first live session with the scan; M10b
+## Current milestone: M13 ✅ (fast scan cycle) → next: first live session with the scan; M10b
 
 ### Completed
 - **M0** foundation: layered architecture, config, data models, `BrokerAdapter`.
@@ -95,8 +95,14 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   `get_daily_candles`, `scripts/scan_now.py`). 12 months of 1-min data for
   the curated 25 + indices in `data/replay_1y` (M10b baseline).
 
+- **M12** (DECISIONS #22): one score from eight groups with user weights;
+  two-stage selection (quote pre-rank → top 50 → full score).
+- **M13** (DECISIONS #23): fast once-a-minute scan (batch OHLC/LTP for the
+  pool, feed prices where subscribed, parallel quotes for the top 100
+  movers, shared rate limiter, stale-quote expiry, 10 s SDK timeout).
+
 ### Tests
-342 passing (169 at the start of 2026-09-28) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+396 passing (169 at the start of 2026-09-28) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — unblocked 2026-09-27 (pandas 3.0.6, pyarrow 25.0.1, streamlit

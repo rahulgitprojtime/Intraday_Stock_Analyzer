@@ -69,3 +69,10 @@ scan:
   stats_sessions: 20
   prep_calls_per_minute: 150 # morning daily-stats pacing (200 back-to-back measured OK)
   long_only: true
+  # M13 fast cycle (DECISIONS #23), once a minute: batch OHLC + LTP for the
+  # whole pool (50 per call; feed prices used where subscribed), movement
+  # pre-rank, then parallel quotes (volume, VWAP) for the top movers only.
+  movers_per_cycle: 100
+  quote_workers: 4
+  max_calls_per_second: 8    # shared limiter; Groww Live Data limit is 10/s
+  quote_max_age_seconds: 180 # older quotes stop counting in the ranking

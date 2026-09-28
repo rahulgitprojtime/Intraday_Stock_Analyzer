@@ -361,3 +361,18 @@ def test_get_daily_candles_one_call_keeps_midnight_rows(monkeypatch):
     assert all(c.timeframe_minutes == 1440 for c in candles)
     with pytest.raises(ValueError, match="180"):
         adapter.get_daily_candles(_cash_instrument("SUZLON"), date(2026, 1, 1), date(2026, 9, 28))
+
+
+def test_every_sdk_call_gets_a_request_timeout(monkeypatch):
+    """growwapi 1.5.0 defaults to timeout=None (wait forever); a stalled
+    connection must not freeze the scan or the morning prep."""
+    fake = install_fake_groww(monkeypatch)
+    monkeypatch.setenv("GROWW_AUTH_MODE", "api_key")
+    monkeypatch.setenv("GROWW_API_KEY", "k1")
+    monkeypatch.setenv("GROWW_API_SECRET", "s1")
+    fake.historical_candles_responses = [{"candles": []}]
+    adapter = GrowwAdapter()
+    adapter.authenticate()
+    adapter.get_daily_candles(_cash_instrument("SUZLON"), date(2026, 9, 1), date(2026, 9, 28))
+    [(_, kwargs)] = fake.instances[-1].calls
+    assert kwargs["timeout"] == 10

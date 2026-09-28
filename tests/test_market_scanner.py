@@ -131,3 +131,93 @@ def test_sweep_keeps_quote_shape_and_previous_volume_for_acceleration(tmp_path):
     assert {"open", "high", "low", "average_price", "at"} <= set(q)
     c = s.ranked(NOW + timedelta(minutes=3))[0]
     assert c.parts["volume"]["acceleration"] is not None
+
+
+from src.data.models import OHLC  # noqa: E402
+
+
+class BatchAdapter(FakeAdapter):
+    """Adds the batch calls the fast cycle uses (verified shapes: get_ohlc close =
+    previous close; both take up to 50 instruments per call)."""
+
+    def __init__(self, moves, **kw):
+        super().__init__(**kw)
+        self.moves = moves                     # symbol -> (last, day_high, day_low)
+        self.ohlc_calls = self.ltp_calls = 0
+
+    def get_ohlc(self, instruments):
+        self.ohlc_calls += 1
+        return {i.trading_symbol: OHLC(i, 100.0, self.moves[i.trading_symbol][1],
+                                       self.moves[i.trading_symbol][2], 100.0)
+                for i in instruments}
+
+    def get_ltp(self, instruments):
+        self.ltp_calls += 1
+        return {i.trading_symbol: self.moves[i.trading_symbol][0] for i in instruments}
+
+    def get_quote(self, instrument):
+        sym = instrument.trading_symbol
+        self.quote_calls.append(sym)
+        last, high, low = self.moves[sym]
+        return Quote(instrument, last, 100, high, low, 100, 1_000_000, last - 100, last - 100)
+
+
+def fast_scanner(tmp_path, adapter, syms, movers=2):
+    cfg = ScannerConfig(top_n=2, min_stay_minutes=10, calls_per_minute=200, stats_sessions=20,
+                        prep_calls_per_minute=120, movers_per_cycle=movers, quote_workers=3,
+                        max_calls_per_second=1000, quote_max_age_seconds=180)
+    return MarketScanner(adapter, [inst(s) for s in syms], FILTERS, cfg, CURVE,
+                         tmp_path / "cache", tmp_path / "scans", sleep=lambda s: None)
+
+
+def test_cycle_quotes_only_the_top_movers(tmp_path):
+    moves = {"UP3": (103.0, 103.2, 99.8), "UP1": (101.0, 101.5, 99.5),
+             "FLAT": (100.1, 100.6, 99.4), "DOWN": (98.0, 100.2, 97.9)}
+    ad = BatchAdapter(moves)
+    s = fast_scanner(tmp_path, ad, list(moves), movers=2)
+    s.prepare(TODAY)
+    assert s.cycle(NOW, ltp={k: v[0] for k, v in moves.items()}) == []
+    assert ad.ohlc_calls == 1 and ad.ltp_calls == 0          # feed prices used, no LTP call
+    assert sorted(ad.quote_calls) == ["UP1", "UP3"]          # only the 2 strongest movers
+    assert [c.symbol for c in s.ranked(NOW)] == ["UP3", "UP1"]
+
+
+def test_cycle_falls_back_to_batch_ltp_without_feed(tmp_path):
+    moves = {"UP3": (103.0, 103.2, 99.8), "UP1": (101.0, 101.5, 99.5)}
+    ad = BatchAdapter(moves)
+    s = fast_scanner(tmp_path, ad, list(moves))
+    s.prepare(TODAY)
+    s.cycle(NOW, ltp=None)
+    assert ad.ltp_calls == 1 and len(ad.quote_calls) == 2
+
+
+def test_stale_quotes_drop_out_of_the_ranking(tmp_path):
+    moves = {"UP3": (103.0, 103.2, 99.8), "UP1": (101.0, 101.5, 99.5)}
+    ad = BatchAdapter(moves)
+    s = fast_scanner(tmp_path, ad, list(moves))
+    s.prepare(TODAY)
+    s.cycle(NOW, ltp={k: v[0] for k, v in moves.items()})
+    assert len(s.ranked(NOW + timedelta(minutes=2))) == 2
+    assert s.ranked(NOW + timedelta(minutes=4)) == []        # older than 180 s
+
+
+def test_cycle_fetches_ltp_for_pool_stocks_the_feed_does_not_cover(tmp_path):
+    """The feed subscribes only to the active set; the rest of the pool still
+    needs prices, so missing symbols come from one batch LTP call."""
+    moves = {"UP3": (103.0, 103.2, 99.8), "UP1": (101.0, 101.5, 99.5)}
+    ad = BatchAdapter(moves)
+    seen = []
+    orig = ad.get_ltp
+    ad.get_ltp = lambda insts: (seen.extend(i.trading_symbol for i in insts), orig(insts))[1]
+    s = fast_scanner(tmp_path, ad, list(moves))
+    s.prepare(TODAY)
+    s.cycle(NOW, ltp={"UP3": 103.0})
+    assert seen == ["UP1"] and sorted(ad.quote_calls) == ["UP1", "UP3"]
+
+
+def test_worker_feed_prices_skip_symbols_without_ltp():
+    from src.app.worker import _feed_prices
+    from src.data.feed_store import FeedStore
+    store = FeedStore()
+    store.count_tick("NOLTP", NOW)
+    assert _feed_prices(store) == {}

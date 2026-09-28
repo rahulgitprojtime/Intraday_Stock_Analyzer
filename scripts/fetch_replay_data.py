@@ -68,6 +68,8 @@ def main(argv=None) -> int:
     p.add_argument("--day", type=date.fromisoformat, required=True, help="last session YYYY-MM-DD")
     p.add_argument("--sessions", type=int, default=21, help="replay day + 20 prep sessions")
     p.add_argument("--out", type=Path, default=Path("data/replay"))
+    p.add_argument("--symbols-file", type=Path, default=None,
+                   help="stocks to fetch, one per line (e.g. scan_now --save); default universe.yaml")
     a = p.parse_args(argv)
 
     load_dotenv(ROOT / ".env")          # credentials; never printed
@@ -77,7 +79,12 @@ def main(argv=None) -> int:
                                    storage["instrument_cache_max_age_hours"])
     adapter = GrowwAdapter(master)
     adapter.authenticate()
-    uni = resolve_universe(load_universe(), lambda s, e: adapter.resolve_instrument(s, e, "CASH"))
+    cfg = load_universe()
+    if a.symbols_file:
+        cfg = cfg | {"symbols": [x.strip() for x in a.symbols_file.read_text(encoding="utf-8")
+                                 .splitlines() if x.strip()],
+                     "filters": cfg.get("filters", {}) | {"max_universe_size": 10_000}}
+    uni = resolve_universe(cfg, lambda s, e: adapter.resolve_instrument(s, e, "CASH"))
     for sym, reason in uni.rejected.items():
         print(f"SKIP  {sym}: {reason}")
     index = [i for i in uni.indices if i.trading_symbol == "NIFTY"]

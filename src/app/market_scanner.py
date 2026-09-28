@@ -17,6 +17,8 @@ from __future__ import annotations
 import json
 import threading
 import time as _time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -25,8 +27,10 @@ from src.quantitative.volume_scan import (
     DailyStats,
     ScanFilters,
     daily_stats,
+    prescore,
     rank_volume_change,
 )
+from src.utils.ratelimit import RateLimiter
 
 STATS_LOOKBACK_DAYS = 60          # calendar days fetched to get 20 sessions (< 180 limit)
 
@@ -38,20 +42,29 @@ class ScannerConfig:
     calls_per_minute: float = 200
     stats_sessions: int = 20
     prep_calls_per_minute: float = 150
+    movers_per_cycle: int = 100          # M13: quoted for volume each minute
+    quote_workers: int = 4
+    max_calls_per_second: float = 8      # Groww Live Data limit is 10/s
+    quote_max_age_seconds: float = 180   # older quotes stop counting
 
     @classmethod
     def from_dict(cls, d: dict) -> ScannerConfig:
         return cls(int(d.get("top_n", 25)), float(d.get("min_stay_minutes", 10)),
                    float(d.get("calls_per_minute", 200)), int(d.get("stats_sessions", 20)),
-                   float(d.get("prep_calls_per_minute", 150)))
+                   float(d.get("prep_calls_per_minute", 150)),
+                   int(d.get("movers_per_cycle", 100)), int(d.get("quote_workers", 4)),
+                   float(d.get("max_calls_per_second", 8)),
+                   float(d.get("quote_max_age_seconds", 180)))
 
 
 class MarketScanner:
     def __init__(self, adapter, instruments: list, filters: ScanFilters, cfg: ScannerConfig,
                  curve: list[float], cache_dir: str | Path, scans_dir: str | Path,
-                 sleep=_time.sleep) -> None:
+                 sleep=_time.sleep, ltp_source: Callable[[], dict] | None = None) -> None:
         self.adapter, self.filters, self.cfg, self.curve = adapter, filters, cfg, curve
         self._sleep = sleep
+        self.ltp_source = ltp_source            # live feed prices for the pool (M13)
+        self._limiter = RateLimiter(cfg.max_calls_per_second)
         self.instruments = {i.trading_symbol: i for i in instruments}
         self.cache_dir, self.scans_dir = Path(cache_dir), Path(scans_dir)
         self.stats: dict[str, DailyStats] = {}
@@ -124,14 +137,71 @@ class MarketScanner:
                 errors.append(f"scan {sym}: {type(exc).__name__}: {exc}")
         return errors
 
+    def _quote_one(self, sym: str, now: datetime) -> str | None:
+        self._limiter.acquire()
+        try:
+            q = self.adapter.get_quote(self.instruments[sym])
+        except Exception as exc:
+            return f"scan {sym}: {type(exc).__name__}: {exc}"
+        with self._lock:
+            prev = self._quotes.get(sym)
+            self._quotes[sym] = {
+                "symbol": sym, "volume": int(q.volume), "last_price": float(q.last_price),
+                "open": q.open or None, "high": q.high or None, "low": q.low or None,
+                "average_price": getattr(q, "average_price", None), "at": now,
+                "prev_volume": prev["volume"] if prev else None,
+                "prev_at": prev["at"] if prev else None}
+        return None
+
+    def cycle(self, now: datetime, ltp: dict | None = None) -> list[str]:
+        """One fast pass (M13, DECISIONS #23): day OHLC for the whole pool in
+        batches of 50, prices from the live feed (batch LTP for pool stocks
+        the feed does not cover), movement pre-rank of every pool stock, then parallel quotes
+        (volume, VWAP) for only the top `movers_per_cycle` movers."""
+        errors: list[str] = []
+        insts = [self.instruments[s] for s in self.pool]
+        try:
+            ohlc = self.adapter.get_ohlc(insts)
+        except Exception as exc:
+            ohlc = {}
+            errors.append(f"scan ohlc: {type(exc).__name__}: {exc}")
+        ltp = dict(ltp or {})
+        missing = [i for i in insts if ltp.get(i.trading_symbol) is None]   # feed covers the active set only
+        if missing:
+            try:
+                ltp.update(self.adapter.get_ltp(missing))
+            except Exception as exc:
+                errors.append(f"scan ltp: {type(exc).__name__}: {exc}")
+        moving = []
+        for sym in self.pool:
+            last, o, st = ltp.get(sym), ohlc.get(sym), self.stats.get(sym)
+            if last is None or o is None or st is None:
+                continue
+            if self.filters.long_only and last <= st.prev_close:
+                continue
+            q = {"symbol": sym, "volume": 0, "last_price": last, "open": o.open,
+                 "high": max(o.high, last), "low": min(o.low, last), "at": now}
+            parts = prescore(q, st, self.curve)[1]["movement"]
+            have = [v for v in parts.values() if v is not None]
+            moving.append((sum(have) / len(have) if have else 0.0, sym))
+        top = [sym for _, sym in sorted(moving, key=lambda m: (-m[0], m[1]))]
+        top = top[: self.cfg.movers_per_cycle]
+        with ThreadPoolExecutor(max_workers=self.cfg.quote_workers) as ex:
+            errors += [e for e in ex.map(lambda s: self._quote_one(s, now), top) if e]
+        self._calls += len(top)
+        return errors
+
     def _loop(self) -> None:
-        pause = 60.0 / self.cfg.calls_per_minute
         while not self._stop.is_set():
             started = _time.monotonic()
-            errs = self.sweep_step(1, datetime.now())
+            try:
+                ltp = self.ltp_source() if self.ltp_source else None
+                errs = self.cycle(datetime.now(), ltp)
+            except Exception as exc:               # the scan must never kill the worker
+                errs = [f"scan cycle: {type(exc).__name__}: {exc}"]
             if errs:
                 self.last_errors = (self.last_errors + errs)[-20:]
-            self._stop.wait(max(0.0, pause - (_time.monotonic() - started)))
+            self._stop.wait(max(0.0, 60.0 - (_time.monotonic() - started)))
 
     def start(self) -> None:
         self._stop.clear()
@@ -146,8 +216,10 @@ class MarketScanner:
     # -- results ----------------------------------------------------------------
 
     def ranked(self, now: datetime):
+        max_age = self.cfg.quote_max_age_seconds
         with self._lock:
-            quotes = list(self._quotes.values())
+            quotes = [q for q in self._quotes.values()
+                      if (now - q["at"]).total_seconds() <= max_age]
         return rank_volume_change(quotes, self.stats, self.filters, now.time(), self.curve)
 
     def status(self) -> dict:

@@ -324,3 +324,18 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
 - BANK NIFTY joins the market group for sectors listed in
   `sectors.yaml bank_nifty_sectors`; market regime = NIFTY vs its EMA20.
 - Weights are a judgement call, unvalidated; change only via M10 experiments.
+
+### #23 — M13 fast scan cycle (2026-09-28)
+- The M11/M12 sweep quoted the pool one stock at a time (~200/min), so a
+  full pass took several minutes and rankings mixed stale quotes.
+- Now once a minute: day OHLC for the whole liquid pool in batches of 50;
+  prices from the live feed where subscribed, batch LTP for the rest;
+  movement pre-rank of every pool stock (long-only: above previous close);
+  then parallel quotes (4 workers, shared limiter 8 calls/s < Groww 10/s)
+  for only the top `movers_per_cycle` (100) movers, which carry volume.
+- Quotes older than 180 s drop out of the ranking. Every SDK call gets a
+  10 s timeout (growwapi defaults to none; a stalled call froze the scan).
+- Budget per minute ≈ pool/50 OHLC + pool/50 LTP + 100 quotes + worker
+  1-min candles for the active set — under the 300/min cap.
+- `scan_now.py --save` writes the top symbols; `fetch_replay_data.py
+  --symbols-file` downloads replay data for them.

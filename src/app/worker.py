@@ -269,11 +269,12 @@ def _live_context() -> WorkerContext:
     ctx.watchdog = FeedWatchdog(feed, feed_cfg)
     ctx.news = _news_service([i.trading_symbol for i in stocks])
     if scanning:
-        ctx.universe = _dynamic_universe(adapter, master, scan_cfg, data_dir, feed)
+        ctx.universe = _dynamic_universe(adapter, master, scan_cfg, data_dir, feed,
+                                         ctx.feed_store)
     return ctx
 
 
-def _dynamic_universe(adapter, master, scan_cfg: dict, data_dir: Path, feed):
+def _dynamic_universe(adapter, master, scan_cfg: dict, data_dir: Path, feed, feed_store):
     """Market-wide volume scan over every NSE EQ intraday stock (M11)."""
     from src.app.dynamic_universe import DynamicUniverse
     from src.app.market_scanner import MarketScanner, ScannerConfig
@@ -285,10 +286,17 @@ def _dynamic_universe(adapter, master, scan_cfg: dict, data_dir: Path, feed):
         adapter, master.scan_universe(),
         ScanFilters(float(f.get("min_price", 0)), float(f.get("min_avg_daily_volume", 0)),
                     float(f.get("min_avg_traded_value", 0)), bool(scan_cfg.get("long_only", True))),
-        cfg, load_market_curve(), data_dir / "cache", data_dir / "scans")
+        cfg, load_market_curve(), data_dir / "cache", data_dir / "scans",
+        ltp_source=lambda: _feed_prices(feed_store))
     return DynamicUniverse(scanner, ActiveSet(cfg.top_n, cfg.min_stay_minutes), master.resolve,
                            date.today(), feed=feed,
                            news_aliases=load_yaml("news.yaml").get("aliases") or {})
+
+
+def _feed_prices(store) -> dict[str, float]:
+    """Latest feed LTP per subscribed symbol; the scanner fetches the rest (M13)."""
+    snap = store.snapshot(datetime.now())
+    return {sym: st.ltp for sym, st in snap.symbols.items() if st.ltp is not None}
 
 
 def _news_service(symbols: list[str]):

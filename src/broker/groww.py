@@ -121,6 +121,7 @@ _MAX_WINDOW_DAYS: dict[int, int] = {
 }
 
 MAX_DAILY_WINDOW_DAYS = 180   # verified live 2026-09-28 (API error above this)
+REQUEST_TIMEOUT_SECONDS = 10  # every SDK call; the SDK default is no timeout
 
 _RETRYABLE = (RateLimitError, GrowwAPITimeoutException)
 
@@ -189,6 +190,10 @@ class GrowwAdapter(BrokerAdapter):
         """Invoke an SDK method, translating growwapi exceptions into this
         project's own exception types and retrying rate-limit/timeout
         errors with backoff (src/utils/retry.py)."""
+
+        # growwapi defaults to timeout=None (wait forever); verified 2026-09-28
+        # that get_quote/get_ltp/get_ohlc/get_historical_candles accept it.
+        kwargs.setdefault("timeout", REQUEST_TIMEOUT_SECONDS)
 
         def _attempt():
             try:

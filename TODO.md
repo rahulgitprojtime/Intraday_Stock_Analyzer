@@ -72,3 +72,7 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [ ] First live session with the scan (start worker by ~09:00 for the stats prep)
 - [ ] Sector map for scanned stocks (currently only the curated names)
 - [ ] Paper trading on the scanned universe uses data/scans history (forward test)
+
+## M13 — Fast scan cycle ✅ (DECISIONS #23)
+- [x] Batch OHLC/LTP pre-rank of the pool, parallel quotes for the top movers, shared limiter, stale-quote expiry, SDK timeout
+- [ ] Live-check one cycle's duration and call count at the open

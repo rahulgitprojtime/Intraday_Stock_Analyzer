@@ -2,9 +2,9 @@
 
 Uses the same scanner as the live worker: daily stats for every NSE
 EQ-series intraday stock (cached per day), then one full quote sweep of the
-liquid pool, then the top N by volume change (long-only).
+liquid pool, then the top N by the quote-computable groups (long-only; DECISIONS #22).
 
-    python scripts/scan_now.py --top 25
+    python scripts/scan_now.py --top 50 --save data/scans/top.txt
 """
 
 from __future__ import annotations
@@ -38,7 +38,8 @@ def show_errors(errors: list[str], limit: int = 5) -> None:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--top", type=int, default=25)
+    p.add_argument("--top", type=int, default=50)
+    p.add_argument("--save", type=Path, default=None, help="write the top symbols, one per line")
     a = p.parse_args(argv)
     load_dotenv(ROOT / ".env")
     storage = load_settings()["storage"]
@@ -69,8 +70,16 @@ def main(argv=None) -> int:
     print(f"\n{len(ranked)} stocks up on the day and liquid; top {a.top} by volume change "
           f"at {now:%H:%M}:")
     for i, c in enumerate(ranked[: a.top], 1):
-        print(f"{i:>3} {c.symbol:<14} vol x{c.volume_change:6.2f}  day {c.day_change_pct:+6.2f}%"
-              f"  volume {c.volume:>12,}")
+        g = {k: (sum(x for x in v.values() if x is not None) /
+                 max(1, sum(1 for x in v.values() if x is not None))) for k, v in c.parts.items()}
+        print(f"{i:>3} {c.symbol:<14} scan {c.score:5.1f}  movement {g['movement']:5.1f}  "
+              f"volume {g['volume']:5.1f}  liquidity {g['liquidity']:5.1f}  |  vol x{c.volume_change:5.2f}"
+              f"  day {c.day_change_pct:+6.2f}%")
+    if a.save:
+        a.save.parent.mkdir(parents=True, exist_ok=True)
+        lines = [c.symbol for c in ranked[: a.top]]
+        a.save.write_text("".join(f"{s}\n" for s in lines), encoding="utf-8")
+        print(f"saved {min(a.top, len(ranked))} symbols -> {a.save}")
     return 0
 
 

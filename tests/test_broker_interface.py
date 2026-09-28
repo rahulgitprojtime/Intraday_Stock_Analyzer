@@ -21,12 +21,12 @@ def test_groww_adapter_rejects_unknown_auth_mode(monkeypatch):
         GrowwAdapter()
 
 
-def test_groww_adapter_methods_are_stubbed_not_faked():
-    """Every unimplemented method must raise NotImplementedError rather
-    than silently returning fabricated data (project hard rule)."""
-    adapter = GrowwAdapter()
-    with pytest.raises(NotImplementedError):
-        adapter.connection_state()  # live feed is M3
+def test_api_client_requires_authentication():
+    """The live feed (M7, src/broker/groww_feed.py) needs the SDK client;
+    it is only handed out after a successful authenticate()."""
+    from src.broker.base import AuthenticationError
+    with pytest.raises(AuthenticationError):
+        GrowwAdapter().api_client()
 
 
 def test_broker_interface_exposes_no_order_execution():

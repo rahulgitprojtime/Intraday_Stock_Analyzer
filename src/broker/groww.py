@@ -413,20 +413,10 @@ class GrowwAdapter(BrokerAdapter):
         deduped: dict[datetime, Candle] = {c.timestamp: c for c in candles}
         return [deduped[ts] for ts in sorted(deduped)]
 
-    # -- Streaming (M3) ----------------------------------------------------
+    # -- Live feed (M7) ----------------------------------------------------
 
-    def subscribe_ltp(
-        self,
-        instruments: Sequence[Instrument],
-        on_data: Callable[[dict], None],
-    ) -> None:
-        raise NotImplementedError("Live feed is implemented in M3")
-
-    def unsubscribe_ltp(self, instruments: Sequence[Instrument]) -> None:
-        raise NotImplementedError("Live feed is implemented in M3")
-
-    def get_market_depth(self, instrument: Instrument) -> MarketDepth:
-        raise NotImplementedError("Live feed is implemented in M3")
-
-    def connection_state(self) -> str:
-        raise NotImplementedError("Live feed is implemented in M3")
+    def api_client(self):
+        """Authenticated SDK client for `LiveFeed` (src/broker/groww_feed.py).
+        Streaming lives there, not on `BrokerAdapter`."""
+        self._ensure_authenticated()
+        return self._client

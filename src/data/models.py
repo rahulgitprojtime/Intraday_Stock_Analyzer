@@ -7,7 +7,7 @@ Groww-specific response shapes. This is what keeps the broker swappable
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, time
 from enum import Enum
 
@@ -106,21 +106,6 @@ class HistoricalCandleRequest:
     start_time: datetime
     end_time: datetime
     interval_minutes: int
-
-
-class ConnectionState(str, Enum):
-    CONNECTED = "CONNECTED"
-    RECONNECTING = "RECONNECTING"
-    DISCONNECTED = "DISCONNECTED"
-    STALE = "STALE"              # connected but data hasn't updated recently
-
-
-@dataclass
-class FeedHealth:
-    state: ConnectionState
-    last_tick_at: datetime | None = None
-    stale_symbols: list[str] = field(default_factory=list)
-    last_error: str | None = None
 
 
 @dataclass(frozen=True)

@@ -19,13 +19,12 @@ interface deliberately has no order/position/holdings methods
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 
 from src.data.models import (
     Candle,
     HistoricalCandleRequest,
     Instrument,
-    MarketDepth,
     OHLC,
     Quote,
 )
@@ -89,24 +88,3 @@ class BrokerAdapter(ABC):
         per-interval max window (see docs/groww_api_notes.md) and stitching
         results back into one ordered list."""
 
-    # -- Streaming -------------------------------------------------------
-
-    @abstractmethod
-    def subscribe_ltp(
-        self,
-        instruments: Sequence[Instrument],
-        on_data: Callable[[dict], None],
-    ) -> None:
-        """Non-blocking subscribe; the adapter owns the background
-        connection. Must never be called from the Streamlit process for
-        its primary feed connection (see ARCHITECTURE.md)."""
-
-    @abstractmethod
-    def unsubscribe_ltp(self, instruments: Sequence[Instrument]) -> None: ...
-
-    @abstractmethod
-    def get_market_depth(self, instrument: Instrument) -> MarketDepth: ...
-
-    @abstractmethod
-    def connection_state(self) -> str:
-        """Returns a ConnectionState value (see src/data/models.py)."""

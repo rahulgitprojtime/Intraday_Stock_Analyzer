@@ -43,3 +43,17 @@ def test_real_growwapi_sdk_is_detected_when_installed():
     from src.broker import groww
 
     assert groww.GROWWAPI_INSTALLED is True
+
+
+def test_paper_trading_cannot_reach_order_functionality():
+    """M10 (DECISIONS #20): the paper layer simulates positions on candles; it
+    must not import the broker/SDK or call anything order-like."""
+    import re
+    from pathlib import Path
+
+    for path in list(Path("src/paper").glob("*.py")) + [Path("scripts/paper_replay.py")]:
+        src = path.read_text(encoding="utf-8")
+        imports = re.findall(r"^\s*(?:from|import)\s+(\S+)", src, re.M)
+        assert not [m for m in imports if m.startswith(("src.broker", "growwapi"))], path
+        calls = re.findall(r"\.(\w*order\w*)\s*\(", src, re.I)
+        assert not calls, (path, calls)

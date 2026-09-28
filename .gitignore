@@ -29,3 +29,5 @@ data/cache/*
 .vscode/
 data/demo/
 data/replay/
+reports/
+data/paper/

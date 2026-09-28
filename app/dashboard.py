@@ -23,6 +23,7 @@ from app.view_model import (  # noqa: E402
     avoided,
     banners,
     checklist_lines,
+    news_links,
     load_state,
     select,
     table_rows,
@@ -52,6 +53,11 @@ def _card(r: dict) -> None:
         st.markdown("**Prerequisites checked**")
         for line in checklist_lines(r):
             st.write(line)
+        links = news_links(r)
+        if links:
+            st.markdown("**News (real headlines, linked)**")
+            for link in links:
+                st.markdown(link)
         for c in r["components"]:
             if c["status"] != "available" or c["value"] is None:
                 st.caption(f"{c['name']}: unavailable")

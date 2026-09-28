@@ -192,3 +192,31 @@ def test_missing_sector_index_data_is_unavailable_not_error(tmp_path):
     state = run_tick(ctx, AS_OF, GEN)
     assert state["errors"] == []
     assert all(r["sector_context"]["verdict"] == "UNAVAILABLE" for r in state["modes"]["DAY"])
+
+
+class StubNews:
+    def __init__(self):
+        self.ticks = []
+
+    def tick(self, now):
+        self.ticks.append(now)
+        return ["news BBB: OSError: timed out"]
+
+    def result(self, symbol, now):
+        if symbol != "AAA":
+            return None
+        return {"status": "available", "verdict": "NO_RELEVANT_INFORMATION", "items": [],
+                "lookback_hours": 18}
+
+
+def test_news_service_is_ticked_with_real_clock_and_results_flow_through(tmp_path):
+    ctx = context(tmp_path)
+    ctx.news = StubNews()
+    state = run_tick(ctx, AS_OF, GEN)
+    assert ctx.news.ticks == [GEN] and "news BBB: OSError: timed out" in state["errors"]
+    recs = {r["symbol"]: r for r in state["modes"]["DAY"]}
+    assert recs["AAA"]["qualitative"]["verdict"] == "NO_RELEVANT_INFORMATION"
+    assert recs["BBB"]["qualitative"] == {"status": "unavailable"}
+    news = {r["symbol"]: [c for c in r["prerequisites"] if c["check"] == "news"][0]["status"]
+            for r in state["modes"]["DAY"]}
+    assert news == {"AAA": "NA", "BBB": "NOT_CHECKED"}

@@ -1,8 +1,8 @@
 import json
 from datetime import datetime, time, timedelta
 
-from app.view_model import (DISCLAIMER, avoided, banners, checklist_lines, load_state, select,
-                            table_rows)
+from app.view_model import (DISCLAIMER, avoided, banners, checklist_lines, load_state,
+                            news_links, select, table_rows)
 from src.app.worker import write_state
 from tests.test_worker import GEN, context, run_tick
 from tests.fakes.replay_fixture import REPLAY_DAY
@@ -78,7 +78,9 @@ def test_table_rows_columns_and_no_prices(tmp_path):
     recs = real_state(tmp_path)["modes"]["SCALP"]
     rows = table_rows(recs)
     assert list(rows[0]) == ["Rank", "Symbol", "Category", "Score", "Best Setup", "Setup State",
-                             "RVOL", "In Play", "Sector", "Market Context", "Prerequisites"]
+                             "RVOL", "In Play", "Sector", "News", "Market Context",
+                             "Prerequisites"]
+    assert rows[0]["News"] == "not checked"
     assert rows[0]["Sector"] == "unavailable"               # fixture has no sector index
     assert rows[0]["Prerequisites"] == recs[0]["prerequisites_summary"]
     assert [row["Rank"] for row in rows] == [r["rank"] for r in recs]
@@ -98,5 +100,15 @@ def test_checklist_lines_in_funnel_order_with_status_marks(tmp_path):
     lines = checklist_lines(rec)
     assert [line[2:].split(":")[0] for line in lines] == [
         "Technicals", "In play", "Liquidity", "Sector", "Market", "News"]
-    assert lines[-1] == "– News: not checked yet (M9)"
+    assert lines[-1] == "– News: not checked (no live news source)"
     assert lines[3] == "– Sector: no sector index for this stock"
+
+
+def test_news_cell_and_links():
+    rec = {"qualitative": {"status": "available", "verdict": "POSITIVE", "items": [
+        {"title": "L&T bags [big] order", "source": "Mint", "outlets": 3,
+         "published_at": "2026-09-28T09:40", "link": "https://news.example/a",
+         "direction": "UP", "phrase": "bags order", "reason": "'bags order'"}]}}
+    assert news_links(rec) == [
+        "▲ [L&T bags \[big\] order](https://news.example/a) — Mint +2 outlets, 09:40"]
+    assert news_links({"qualitative": {"status": "unavailable"}}) == []

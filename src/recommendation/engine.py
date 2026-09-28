@@ -70,6 +70,7 @@ class SymbolInputs:
     index_bars: Sequence[Candle]        # NIFTY 1-min bars up to as_of
     feed: SymbolFeed | None = None      # live feed metrics (M7); None in replay/stale
     sector: dict | None = None          # sector_context block (M8); None → unavailable
+    news: dict | None = None            # news verdict (M9); None → not checked (replay)
 
 
 @dataclass(frozen=True)
@@ -244,6 +245,13 @@ def evaluate_symbol(
             pre.append(Adjustment("confluence", "bonus", applied,
                                   f"{len(families)} independent setup families active: "
                                   f"{', '.join(families)}"))
+        news_verdict = (inp.news or {}).get("verdict")
+        if news_verdict == "POSITIVE":
+            nb = min(cfg.news_positive_bonus, 100.0 - base - applied)
+            if nb > 0:
+                applied += nb
+                pre.append(Adjustment("news_positive", "bonus", nb,
+                                      "Recent upward news catalyst (credibility)"))
         score, adjustments = apply_time_rules(base + applied, mode, as_of.time(), cfg)
         adjustments = pre + adjustments
         forced = []
@@ -266,9 +274,21 @@ def evaluate_symbol(
                 score -= pen
                 adjustments.append(Adjustment("sector_weak_penalty", "penalty", -pen,
                                               "Sector weak: deprioritized"))
+        if news_verdict == "NEGATIVE":
+            n = len(adjustments)
+            score = cap_score(score, cfg.categories["CANDIDATE"] - 0.01, "news_negative",
+                              "Recent downward news: capped at WATCH", adjustments)
+            if len(adjustments) == n:
+                forced.append(Reason("penalty", "Recent downward news: at most WATCH",
+                                     {"verdict": "NEGATIVE"}))
+            pen = min(cfg.news_negative_penalty, score)
+            if pen > 0:
+                score -= pen
+                adjustments.append(Adjustment("news_negative_penalty", "penalty", -pen,
+                                              "Recent downward news: deprioritized"))
         category = categorize(score, cfg)
         exclusions = avoid_reasons(best, category)
-        checklist, summary = build_checklist(best, ip, liq, sector, market)
+        checklist, summary = build_checklist(best, ip, liq, sector, market, inp.news)
         if "best setup failed" in exclusions:
             forced.append(Reason("penalty", f"{best.name} failed: category set to AVOID",
                                  {"best_state": "FAILED"}))
@@ -290,7 +310,7 @@ def evaluate_symbol(
             profile=profile(ip.is_in_play, best), components=comps,
             quantitative=_quantitative(sscore, ip, liq, inp.feed), setup=setup_block,
             market_context=market_block, sector_context=sector,
-            qualitative=qualitative_unavailable(), adjustments=tuple(adjustments),
+            qualitative=inp.news or qualitative_unavailable(), adjustments=tuple(adjustments),
             reasons=_reasons(signals, ip, market, liq, adjustments,
                              _feed_reasons(inp.feed, mode) + forced), data_quality=dq,
             eligible_for_top_n=not exclusions, exclusion_reasons=exclusions,

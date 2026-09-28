@@ -87,6 +87,7 @@ def table_rows(recs: Sequence[dict]) -> list[dict]:
             "RVOL": "-" if rvol is None else f"{rvol:.1f}x",
             "In Play": "Yes" if q["is_in_play"] else "No",
             "Sector": _sector_cell(r["sector_context"]),
+            "News": _news_cell(r["qualitative"]),
             "Market Context": "unavailable" if m["status"] != "available" else f"{m['score']:.0f}",
             "Prerequisites": r["prerequisites_summary"],
         })
@@ -97,6 +98,28 @@ def _sector_cell(sc: dict) -> str:
     if sc["status"] != "available":
         return "unavailable"
     return f"{sc['sector']} {sc['verdict'].lower()}"
+
+
+NEWS_CELL = {"POSITIVE": "▲ upward", "NEGATIVE": "▼ downward", "MIXED": "mixed",
+             "NEUTRAL": "no clear direction", "NO_RELEVANT_INFORMATION": "none relevant",
+             "UNAVAILABLE": "unavailable"}
+ARROW = {"UP": "▲", "DOWN": "▼", "NEUTRAL": "•"}
+
+
+def _news_cell(q: dict) -> str:
+    return NEWS_CELL.get(q.get("verdict"), "not checked")
+
+
+def news_links(rec: dict) -> list[str]:
+    """Markdown links to the real headlines behind the news check (M9)."""
+    out = []
+    for it in rec["qualitative"].get("items") or []:
+        title = it["title"].replace("[", "\[").replace("]", "\]")
+        extra = it["outlets"] - 1
+        more = f" +{extra} outlet{'s' if extra > 1 else ''}" if extra else ""
+        out.append(f"{ARROW[it['direction']]} [{title}]({it['link']}) — "
+                   f"{it['source']}{more}, {it['published_at'][11:16]}")
+    return out
 
 
 CHECK_MARK = {"PASS": "✓", "WARN": "~", "FAIL": "✗", "NA": "–", "NOT_CHECKED": "–"}

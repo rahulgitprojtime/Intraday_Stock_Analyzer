@@ -55,9 +55,10 @@ MARKET = nifty_context(INDEX, AS_OF, 120, CFG.market_ramp_pct)
 
 
 def evaluate(bars=None, *, sym="HOT", prep=PREP, liq=LIQ, market=MARKET, as_of=AS_OF,
-             curve=CURVE, cfg=CFG, ip_cfg=IP_CFG, feed=None, filters=FILTERS, sector=None):
+             curve=CURVE, cfg=CFG, ip_cfg=IP_CFG, feed=None, filters=FILTERS, sector=None,
+             news=None):
     inp = SymbolInputs(sym, bars if bars is not None else trend_bars(sym), prep, curve, liq, INDEX,
-                       feed, sector)
+                       feed, sector, news)
     return evaluate_symbol(inp, market, as_of, cfg, ip_cfg, filters, 120)
 
 
@@ -349,7 +350,7 @@ def test_prerequisites_checklist_statuses_and_summary():
     assert c["liquidity"]["status"] == "PASS" and "spread 0.04%" in c["liquidity"]["detail"]
     assert c["sector"]["status"] == "PASS" and "IT +0.40% vs NIFTY" in c["sector"]["detail"]
     assert c["news"] == {"check": "news", "status": "NOT_CHECKED",
-                         "detail": "not checked yet (M9)"}
+                         "detail": "not checked (no live news source)"}
     assert rec.prerequisites_summary.startswith("Checked: technicals ✓")
     assert "news – not checked" in rec.prerequisites_summary
 
@@ -362,3 +363,49 @@ def test_prerequisites_fail_warn_and_na():
     assert c["liquidity"]["status"] == "WARN"                          # spread unchecked
     none = evaluate(market=MarketContext("unavailable", None, None)).recommendations["DAY"]
     assert checks(none)["sector"]["status"] == "NA" and checks(none)["market"]["status"] == "NA"
+
+
+def news_block(verdict, direction="UP", title="HOT bags Rs 900 crore order from NHAI"):
+    items = [] if verdict in ("NO_RELEVANT_INFORMATION", "UNAVAILABLE") else [
+        {"title": title, "source": "Mint", "outlets": 2, "published_at": "2026-09-25T09:40",
+         "link": "https://news.example/1", "direction": direction, "phrase": "bags * order",
+         "reason": "'bags * order'"}]
+    return {"status": "unavailable" if verdict == "UNAVAILABLE" else "available",
+            "verdict": verdict, "items": items, "reason": "news fetch failed",
+            "lookback_hours": 18, "age_minutes": 3.0}
+
+
+def test_positive_news_adds_credibility_bonus_and_passes_check():
+    base = evaluate(ip_cfg=IP_ALL).recommendations["DAY"]
+    rec = evaluate(ip_cfg=IP_ALL, news=news_block("POSITIVE")).recommendations["DAY"]
+    bonus = next(a for a in rec.adjustments if a.name == "news_positive")
+    assert bonus.kind == "bonus" and 0 < bonus.points <= CFG.news_positive_bonus
+    assert rec.score >= base.score and rec.qualitative["verdict"] == "POSITIVE"
+    n = checks(rec)["news"]
+    assert n["status"] == "PASS"
+    assert n["detail"] == "upward catalyst: 'HOT bags Rs 900 crore order from NHAI' (Mint +1 outlet, 09:40)"
+
+
+def test_negative_news_caps_and_penalizes_after_caps():
+    rec = evaluate(ip_cfg=IP_ALL, news=news_block("NEGATIVE", "DOWN",
+                                                  "Citi cuts HOT target")).recommendations["DAY"]
+    assert rec.score < CFG.categories["CANDIDATE"] and rec.eligible_for_top_n
+    assert any(a.name == "news_negative_penalty" and a.points == -CFG.news_negative_penalty
+               for a in rec.adjustments)
+    assert checks(rec)["news"]["status"] == "FAIL"
+    assert "downward" in checks(rec)["news"]["detail"]
+
+
+def test_news_mixed_none_and_unavailable_statuses():
+    assert checks(evaluate(news=news_block("MIXED")).recommendations["DAY"])["news"]["status"]         == "WARN"
+    none = checks(evaluate(news=news_block("NO_RELEVANT_INFORMATION")).recommendations["DAY"])
+    assert none["news"] == {"check": "news", "status": "NA",
+                            "detail": "no relevant news in the last 18h"}
+    down = checks(evaluate(news=news_block("UNAVAILABLE")).recommendations["DAY"])
+    assert down["news"]["status"] == "NA" and "news fetch failed" in down["news"]["detail"]
+
+
+def test_news_links_are_kept_and_no_invented_text():
+    rec = evaluate(news=news_block("POSITIVE")).recommendations["DAY"]
+    assert rec.qualitative["items"][0]["link"] == "https://news.example/1"
+    assert evaluate().recommendations["DAY"].qualitative == {"status": "unavailable"}

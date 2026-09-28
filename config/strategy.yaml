@@ -70,6 +70,13 @@ sector:
   weights: {rs: 0.6, peers: 0.4}
   weak_penalty: 5          # points, applied after caps: WEAK ranks below capped peers
 
+# News check (M9, config/news.yaml for rules). POSITIVE adds credibility
+# before caps; NEGATIVE caps at WATCH and subtracts after caps (long-only
+# caution). Illustrative, unvalidated.
+news:
+  positive_bonus: 3
+  negative_penalty: 5
+
 # Live-feed microstructure (M7, SCALP only). Imbalance = (bid qty - ask
 # qty) / total over the depth payload; velocity = ticks in the last
 # minute / 5-min average. Linear ramps to 0-100, blended by weight (sum 1).

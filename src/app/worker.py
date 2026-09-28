@@ -54,6 +54,7 @@ class WorkerContext:
     sectors: dict = field(default_factory=dict)          # M8 sector map
     sector_cfg: SectorConfig = field(default_factory=SectorConfig)
     sector_indices: list = field(default_factory=list)   # Instruments with candle data
+    news: object | None = None                           # NewsService, live only (M9)
 
 
 def base_context(source, stocks, index, source_name: str, demo: bool) -> WorkerContext:
@@ -111,6 +112,8 @@ def run_tick(ctx: WorkerContext, as_of: datetime, generated_at: datetime) -> dic
                            _stock_coverage(ctx, snap))
         if ctx.watchdog.last_error:
             errors.append(f"feed: {ctx.watchdog.last_error}")
+    if ctx.news is not None:
+        errors += ctx.news.tick(generated_at)       # staggered; a few stocks per minute
     index_bars = []
     if ctx.index is not None:
         try:
@@ -148,7 +151,8 @@ def run_tick(ctx: WorkerContext, as_of: datetime, generated_at: datetime) -> dic
             inputs = SymbolInputs(sym, bars_by[sym], pr.prep if pr else None,
                                   pr.volume_curve if pr else [], pr.liquidity if pr else None,
                                   index_bars, feed,
-                                  stock_context(sym, snapshot, bars_by[sym], ctx.sector_cfg))
+                                  stock_context(sym, snapshot, bars_by[sym], ctx.sector_cfg),
+                                  ctx.news.result(sym, generated_at) if ctx.news else None)
             ev = evaluate_symbol(inputs, market, as_of, ctx.engine_cfg, ctx.in_play_cfg,
                                  ctx.liquidity_filters, ctx.stale_after_seconds)
         except Exception as exc:
@@ -239,7 +243,21 @@ def _live_context() -> WorkerContext:
     feed = LiveFeed(adapter.api_client, uni.stocks, index, ctx.feed_store,
                     poll_seconds=feed_cfg.poll_seconds)
     ctx.watchdog = FeedWatchdog(feed, feed_cfg)
+    ctx.news = _news_service([i.trading_symbol for i in uni.stocks])
     return ctx
+
+
+def _news_service(symbols: list[str]):
+    """Google News RSS headlines + headline-context rules (M9). Live only."""
+    from src.qualitative.headline_rules import NewsRules
+    from src.qualitative.news_service import NewsConfig, NewsService
+    from src.qualitative.news_source import GoogleNewsRSS
+    from src.utils.config import load_yaml
+
+    raw = load_yaml("news.yaml")
+    cfg = NewsConfig.from_dict(raw)
+    return NewsService(GoogleNewsRSS(timeout=cfg.timeout_seconds), NewsRules.from_dict(raw),
+                       cfg, raw.get("aliases") or {}, symbols)
 
 
 def run_loop(ctx: WorkerContext, clock, out: Path, delay: float, ticks: int | None) -> None:

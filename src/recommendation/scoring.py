@@ -33,6 +33,8 @@ class EngineConfig:
     close_cap_after: time
     categories: dict          # category -> min score (recommendation.categories)
     sector_weak_penalty: float = 5.0      # M8: after caps, so weak sectors rank below peers
+    news_positive_bonus: float = 3.0      # M9: credibility, before caps (never lifts past one)
+    news_negative_penalty: float = 5.0    # M9: after caps, like a weak sector
 
     @classmethod
     def from_strategy(cls, strategy: dict) -> EngineConfig:
@@ -53,6 +55,8 @@ class EngineConfig:
             close_cap_after=time.fromisoformat(t["close_cap_after"]),
             categories=dict(strategy["recommendation"]["categories"]),
             sector_weak_penalty=float(strategy.get("sector", {}).get("weak_penalty", 5.0)),
+            news_positive_bonus=float(strategy.get("news", {}).get("positive_bonus", 3.0)),
+            news_negative_penalty=float(strategy.get("news", {}).get("negative_penalty", 5.0)),
         )
 
 

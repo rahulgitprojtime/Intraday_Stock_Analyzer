@@ -80,6 +80,10 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 ## M14 — Research loop ✅ (DECISIONS #24, pre-registered)
 - [x] Snapshot recorder, outcome labeller, evaluator (10 questions), worker wiring, scripts, Task Scheduler
 - [x] Dry run on 2026-09-25 replay (4,116 rows, 4,020 labeled)
-- [ ] Historical run over data/replay_1y; report on the EXPLORE split only (to 2026-06-30)
+- [x] Historical run over data/replay_1y (m15, 223 days); EXPLORE report reports/replay_explore_m15.md (2026-09-28):
+  no signal clears the 0.1% round-trip cost; significant but tiny: 65-79 > 50-64 (+0.02-0.04% at 30/60m),
+  confluence 2/3+ > 1, RS_VS_NIFTY and VWAP_RECLAIM > no setup; no evidence for RVOL, sector, 2% move,
+  lunch penalty; 80+ too rare (172 rows). Hypotheses only until the validate split.
+- [ ] Decide what to test on the validate split (one pre-stated change per run)
 - [ ] 2026-09-29 first live research day: check logs/worker_*.log at open, reports/live_2026-09-29.md after 15:45
 - [ ] After >= 20 live days: live report; proposed changes tested on validate then test split

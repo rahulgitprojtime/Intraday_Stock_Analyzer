@@ -166,3 +166,22 @@ def test_empty_zero_price_levels_are_skipped_not_fatal(feed):
     lf.poll_once()
     d = store.snapshot(T).symbols["RELIANCE"].depth
     assert (d.best_bid, d.best_ask, d.total_bid_qty, d.total_ask_qty) == (1206.3, 1206.4, 150, 100)
+
+
+def test_set_stocks_resubscribes_new_universe(feed):
+    lf, _ = feed
+    lf.start()
+    first = FakeGrowwFeed.instances[-1]
+    INFY = Instrument("INFY", Exchange.NSE, Segment.CASH, exchange_token="1594")
+    lf.set_stocks([REL, INFY])
+    sdk = FakeGrowwFeed.instances[-1]
+    assert sdk is not first and [i["exchange_token"] for i in sdk.subs["ltp"]] == ["2885", "1594"]
+    sdk.emit("ltp", "1594")
+    assert lf._store.snapshot(T).symbols["INFY"].ticks_1m == 1
+    assert lf.subscribed == 5
+
+
+def test_set_stocks_before_start_does_not_connect(feed):
+    lf, _ = feed
+    lf.set_stocks([REL])
+    assert FakeGrowwFeed.instances == [] and not lf.running

@@ -80,3 +80,11 @@ def test_failed_first_fetch_is_unavailable_and_retried_after_refresh():
     src.fail.clear()
     svc.tick(T + 10 * M)
     assert svc.result("TCS", T + 10 * M)["verdict"] == "POSITIVE"
+
+
+def test_add_symbols_for_new_universe_members():
+    svc, src = service(symbols=("TCS",), per_tick=5)
+    svc.add_symbols({"SUZLON": ["Suzlon Energy"], "TCS": ["ignored, already known"]})
+    svc.tick(T)
+    assert src.calls == ["TCS", "Suzlon Energy"]
+    assert svc.result("SUZLON", T)["verdict"] == "POSITIVE"

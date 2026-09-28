@@ -72,7 +72,15 @@ def avoided(recs: Sequence[dict]) -> list[dict]:
                   key=lambda r: (-r["score"], r["symbol"]))
 
 
-def table_rows(recs: Sequence[dict]) -> list[dict]:
+def universe_caption(u: dict) -> str:
+    if u.get("source") == "volume_scan":
+        return (f"Universe: top {u['top_n']} of {u['pool']} liquid stocks by volume change "
+                f"({u['universe']} scanned, {u['quoted']} quoted, {u['full_sweeps']} full sweeps)")
+    return f"Universe: fixed list ({len(u.get('active') or [])} stocks)"
+
+
+def table_rows(recs: Sequence[dict], volume: dict | None = None) -> list[dict]:
+    volume = volume or {}
     rows = []
     for r in recs:
         q, m = r["quantitative"], r["market_context"]
@@ -82,6 +90,7 @@ def table_rows(recs: Sequence[dict]) -> list[dict]:
             "Symbol": r["symbol"],
             "Category": r["category"],
             "Score": round(r["score"], 1),
+            "Vol ×": _vol_cell(volume.get(r["symbol"])),
             "Best Setup": r["setup"]["best"] or "-",
             "Setup State": r["setup"]["best_state"],
             "RVOL": "-" if rvol is None else f"{rvol:.1f}x",
@@ -92,6 +101,10 @@ def table_rows(recs: Sequence[dict]) -> list[dict]:
             "Prerequisites": r["prerequisites_summary"],
         })
     return rows
+
+
+def _vol_cell(v: dict | None) -> str:
+    return "-" if not v or v.get("volume_change") is None else f"{v['volume_change']:.1f}x"
 
 
 def _sector_cell(sc: dict) -> str:

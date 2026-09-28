@@ -55,6 +55,7 @@ class WorkerContext:
     sector_cfg: SectorConfig = field(default_factory=SectorConfig)
     sector_indices: list = field(default_factory=list)   # Instruments with candle data
     news: object | None = None                           # NewsService, live only (M9)
+    universe: object | None = None                       # DynamicUniverse, live scan (M11)
 
 
 def base_context(source, stocks, index, source_name: str, demo: bool) -> WorkerContext:
@@ -106,6 +107,8 @@ def run_tick(ctx: WorkerContext, as_of: datetime, generated_at: datetime) -> dic
     """`as_of` is the minute being scored; feed ages use the real clock
     `generated_at` (ticks arrive after the minute boundary)."""
     errors = list(ctx.errors)
+    if ctx.universe is not None:
+        errors += ctx.universe.refresh(ctx, as_of)    # top N by volume change (M11)
     snap = ctx.feed_store.snapshot(generated_at) if ctx.feed_store else None
     if ctx.watchdog is not None:
         ctx.watchdog.check(generated_at, snap.last_any_tick_age_s if snap else None,
@@ -182,6 +185,9 @@ def run_tick(ctx: WorkerContext, as_of: datetime, generated_at: datetime) -> dic
         "universe_count": len(ctx.stocks),
         "errors": errors,
         "feed": _feed_block(ctx, snap),
+        "universe": (ctx.universe.block(ctx) if ctx.universe is not None else
+                     {"source": "fixed",
+                      "active": [{"symbol": i.trading_symbol} for i in ctx.stocks]}),
     }
 
 
@@ -230,7 +236,10 @@ def _live_context() -> WorkerContext:
     uni = resolve_universe(load_universe(), lambda s, e: adapter.resolve_instrument(s, e, "CASH"))
     index = next((i for i in uni.indices if i.trading_symbol == "NIFTY"), None)
     source = LiveSource(adapter, IntradayCandleCache(data_dir / "cache" / "intraday"))
-    ctx = base_context(source, uni.stocks, index, "live", False)
+    scan_cfg = load_universe().get("scan") or {}
+    scanning = bool(scan_cfg.get("enabled"))
+    stocks = [] if scanning else uni.stocks      # scan: universe filled by DynamicUniverse
+    ctx = base_context(source, stocks, index, "live", False)
     ctx.errors += [f"{s}: {r}" for s, r in uni.rejected.items()]
     for sec in ctx.sectors.values():
         try:
@@ -240,11 +249,32 @@ def _live_context() -> WorkerContext:
     from src.broker.groww_feed import LiveFeed
     feed_cfg = FeedConfig.from_dict(load_settings().get("feed", {}))
     ctx.feed_store = FeedStore()
-    feed = LiveFeed(adapter.api_client, uni.stocks, index, ctx.feed_store,
+    feed = LiveFeed(adapter.api_client, stocks, index, ctx.feed_store,
                     poll_seconds=feed_cfg.poll_seconds)
     ctx.watchdog = FeedWatchdog(feed, feed_cfg)
-    ctx.news = _news_service([i.trading_symbol for i in uni.stocks])
+    ctx.news = _news_service([i.trading_symbol for i in stocks])
+    if scanning:
+        ctx.universe = _dynamic_universe(adapter, master, scan_cfg, data_dir, feed)
     return ctx
+
+
+def _dynamic_universe(adapter, master, scan_cfg: dict, data_dir: Path, feed):
+    """Market-wide volume scan over every NSE EQ intraday stock (M11)."""
+    from src.app.dynamic_universe import DynamicUniverse
+    from src.app.market_scanner import MarketScanner, ScannerConfig
+    from src.quantitative.volume_scan import ActiveSet, ScanFilters, load_market_curve
+    from src.utils.config import load_yaml
+
+    f = load_universe().get("filters", {})
+    cfg = ScannerConfig.from_dict(scan_cfg)
+    scanner = MarketScanner(
+        adapter, master.scan_universe(),
+        ScanFilters(float(f.get("min_price", 0)), float(f.get("min_avg_daily_volume", 0)),
+                    float(f.get("min_avg_traded_value", 0)), bool(scan_cfg.get("long_only", True))),
+        cfg, load_market_curve(), data_dir / "cache", data_dir / "scans")
+    return DynamicUniverse(scanner, ActiveSet(cfg.top_n, cfg.min_stay_minutes), master.resolve,
+                           date.today(), feed=feed,
+                           news_aliases=load_yaml("news.yaml").get("aliases") or {})
 
 
 def _news_service(symbols: list[str]):
@@ -272,6 +302,8 @@ def run_loop(ctx: WorkerContext, clock, out: Path, delay: float, ticks: int | No
     finally:
         if ctx.watchdog is not None:
             ctx.watchdog.feed.stop()
+        if ctx.universe is not None:
+            ctx.universe.scanner.stop()
 
 
 def main(argv=None) -> int:
@@ -299,6 +331,14 @@ def main(argv=None) -> int:
         ctx = _live_context()
         day, clock, delay = date.today(), live_clock(), 0.0
     prepare(ctx, day)
+    if ctx.universe is not None:
+        scanner = ctx.universe.scanner
+        print(f"Volume scan: daily stats for {len(scanner.instruments)} stocks "
+              "(cached per day; first run takes several minutes)...", flush=True)
+        errs = scanner.prepare(day, progress=lambda n, t: print(f"  {n}/{t}", flush=True))
+        ctx.errors += errs[:20]
+        print(f"Volume scan pool: {len(scanner.pool)} liquid stocks; sweeping quotes.", flush=True)
+        scanner.start()
     if ctx.watchdog is not None:
         ctx.watchdog.start(datetime.now())
     run_loop(ctx, clock, a.out, delay, a.ticks)

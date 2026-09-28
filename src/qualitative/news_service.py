@@ -48,6 +48,12 @@ class NewsService:
         self._attempted_at: dict[str, datetime] = {}    # last attempt (success or not)
         self._failed: set[str] = set()
 
+    def add_symbols(self, aliases: dict[str, list[str]]) -> None:
+        """New universe members (M11): known symbols keep their aliases."""
+        new = {s: list(n) for s, n in aliases.items() if n and s not in self._aliases}
+        self._aliases.update(new)
+        self.rules = self.rules.with_aliases(new)
+
     def _due(self, now: datetime) -> list[str]:
         refresh = self.cfg.refresh_minutes * 60
         due = [s for s in self._aliases

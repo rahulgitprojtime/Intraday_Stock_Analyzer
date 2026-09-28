@@ -2,7 +2,7 @@ import json
 from datetime import datetime, time, timedelta
 
 from app.view_model import (DISCLAIMER, avoided, banners, checklist_lines, load_state,
-                            news_links, select, table_rows)
+                            news_links, select, table_rows, universe_caption)
 from src.app.worker import write_state
 from tests.test_worker import GEN, context, run_tick
 from tests.fakes.replay_fixture import REPLAY_DAY
@@ -30,7 +30,7 @@ def test_load_valid_state(tmp_path):
     path = tmp_path / "state.json"
     write_state(path, real_state(tmp_path))
     state, err = load_state(path)
-    assert err is None and state["schema_version"] == 5
+    assert err is None and state["schema_version"] == 6
 
 
 def test_banners_demo_stale_and_disclaimer_last(tmp_path):
@@ -76,10 +76,12 @@ def test_avoided_listed_separately_for_transparency():
 
 def test_table_rows_columns_and_no_prices(tmp_path):
     recs = real_state(tmp_path)["modes"]["SCALP"]
-    rows = table_rows(recs)
-    assert list(rows[0]) == ["Rank", "Symbol", "Category", "Score", "Best Setup", "Setup State",
-                             "RVOL", "In Play", "Sector", "News", "Market Context",
-                             "Prerequisites"]
+    rows = table_rows(recs, {"AAA": {"volume_change": 3.25}})
+    assert list(rows[0]) == ["Rank", "Symbol", "Category", "Score", "Vol ×", "Best Setup",
+                             "Setup State", "RVOL", "In Play", "Sector", "News",
+                             "Market Context", "Prerequisites"]
+    by_sym = {r["Symbol"]: r for r in rows}
+    assert by_sym["AAA"]["Vol ×"] == "3.2x" and by_sym["BBB"]["Vol ×"] == "-"
     assert rows[0]["News"] == "not checked"
     assert rows[0]["Sector"] == "unavailable"               # fixture has no sector index
     assert rows[0]["Prerequisites"] == recs[0]["prerequisites_summary"]
@@ -112,3 +114,11 @@ def test_news_cell_and_links():
     assert news_links(rec) == [
         "▲ [L&T bags \[big\] order](https://news.example/a) — Mint +2 outlets, 09:40"]
     assert news_links({"qualitative": {"status": "unavailable"}}) == []
+
+
+def test_universe_caption():
+    scan = {"source": "volume_scan", "top_n": 25, "pool": 712, "quoted": 690,
+            "full_sweeps": 4, "universe": 1643, "active": []}
+    assert universe_caption(scan) == ("Universe: top 25 of 712 liquid stocks by volume change "
+                                      "(1643 scanned, 690 quoted, 4 full sweeps)")
+    assert universe_caption({"source": "fixed", "active": [{"symbol": "A"}]}) ==         "Universe: fixed list (1 stocks)"

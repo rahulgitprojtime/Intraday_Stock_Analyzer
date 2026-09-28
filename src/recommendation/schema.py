@@ -10,10 +10,11 @@ from dataclasses import fields
 
 from src.recommendation.models import MODES, Recommendation
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 TOP_KEYS = ("schema_version", "as_of", "generated_at", "source", "demo", "data_age_seconds",
             "market", "modes", "excluded", "in_play_count", "universe_count", "errors",
-            "feed")                     # v4 (M7): live feed status block
+            "feed",                     # v4 (M7): live feed status block
+            "universe")                 # v6 (M11): how the stock list was chosen
 FEED_STATUSES = ("LIVE", "STALE", "DOWN", "OFF")
 REC_KEYS = tuple(f.name for f in fields(Recommendation))
 

@@ -27,6 +27,7 @@ from app.view_model import (  # noqa: E402
     load_state,
     select,
     table_rows,
+    universe_caption,
 )
 
 STATE_PATH = Path(os.environ.get("INTRADAY_STATE", ROOT / "data" / "processed" / "state.json"))
@@ -82,9 +83,11 @@ def render() -> None:
     st.caption(f"As of {state['as_of']} · source: {state['source']} · "
                f"in play: {state['in_play_count']}/{state['universe_count']} · "
                f"feed: {state['feed']['status']}")
+    st.caption(universe_caption(state["universe"]))
+    vol = {a["symbol"]: a for a in state["universe"].get("active", [])}
     recs = select(state["modes"][mode], categories, min_score, top_n)
     if recs:
-        st.dataframe(table_rows(recs), hide_index=True, width="stretch")
+        st.dataframe(table_rows(recs, vol), hide_index=True, width="stretch")
         for r in recs:
             _card(r)
     else:

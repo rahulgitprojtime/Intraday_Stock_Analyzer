@@ -82,6 +82,15 @@ class NewsRules:
         )
 
 
+    def with_aliases(self, extra: dict[str, list[str]]) -> NewsRules:
+        """Rules that also recognise new universe members (M11); existing
+        symbols keep their configured aliases."""
+        from dataclasses import replace
+        added = {sym: tuple(_pattern(n) for n in names)
+                 for sym, names in extra.items() if sym not in self.aliases and names}
+        return replace(self, aliases=self.aliases | added)
+
+
 @dataclass(frozen=True)
 class HeadlineResult:
     relevant: bool

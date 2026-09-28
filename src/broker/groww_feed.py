@@ -136,6 +136,16 @@ class LiveFeed:
         self.stop()
         self.start()
 
+    def set_stocks(self, stocks: Sequence[Instrument]) -> None:
+        """New universe (M11 volume scan): resubscribe if connected. The SDK
+        has no bulk resubscribe, so this is a restart with the new list."""
+        self._stocks = [s for s in stocks if s.exchange_token]
+        self._by_key = {s.exchange_token: s.trading_symbol for s in self._stocks}
+        if self._index is not None:
+            self._by_key[self._index_key()] = self._index.trading_symbol
+        if self.running:
+            self.restart()
+
     # -- SDK thread ----------------------------------------------------------
 
     def _on_data(self, meta) -> None:

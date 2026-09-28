@@ -25,7 +25,11 @@ def _norm(text: str) -> str:
 
 
 def _pattern(phrase: str) -> re.Pattern:
-    return re.compile(r"(?<![\w&])" + re.escape(_norm(phrase)) + r"(?![\w&])")
+    """Whole-word phrase; `*` matches a gap of 0-4 words ("cuts * target"
+    catches "Citi cuts TCS target")."""
+    parts = [re.escape(_norm(p)) for p in phrase.split("*")]
+    body = r"(?:\s+\S+){0,4}\s+".join(p.strip().replace(r"\ ", r"\s+") for p in parts)
+    return re.compile(r"(?<![\w&])" + body + r"(?![\w&])")
 
 
 def _word_index(text: str, char_pos: int) -> int:
@@ -56,9 +60,8 @@ class NewsRules:
             roundup=pats(d.get("roundup_phrases")),
             speculation=pats(d.get("speculation_phrases")),
             negations=pats(d.get("negations")),
-            upward=tuple((p, _norm(x)) for p, x in zip(pats(d.get("upward")), d.get("upward") or [])),
-            downward=tuple((p, _norm(x)) for p, x in zip(pats(d.get("downward")),
-                                                          d.get("downward") or [])),
+            upward=tuple(zip(pats(d.get("upward")), d.get("upward") or [])),
+            downward=tuple(zip(pats(d.get("downward")), d.get("downward") or [])),
             window=int(d.get("subject_window_words", 8)),
         )
 
@@ -96,10 +99,13 @@ def classify_headline(title: str, source: str, symbol: str, rules: NewsRules) ->
                 at = _word_index(text, m.start())
                 dist = min(abs(at - o) for o in own)
                 if dist <= rules.window:
-                    candidates.append((dist, at, direction, phrase))
+                    candidates.append((dist, at, -(m.end() - m.start()), "*" in phrase,
+                                       direction, phrase))
     if not candidates:
         return HeadlineResult(True, "catalyst", NEUTRAL, None, "no direction phrase")
-    dist, at, direction, phrase = min(candidates, key=lambda c: (c[0], c[1]))
+    # nearest to the stock; at the same spot the longest matched text wins,
+    # then an exact phrase over a gapped one
+    *_, direction, phrase = min(candidates)
     negated = [n for n in _positions(rules.negations, text) if 0 < at - n <= NEGATION_WINDOW]
     if negated:
         return HeadlineResult(True, "catalyst", NEUTRAL, phrase, f"negated: '{phrase}'")

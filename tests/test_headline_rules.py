@@ -93,3 +93,9 @@ def test_news_yaml_phrases_are_all_strings():
     d = load_yaml("news.yaml")
     lists = [v for v in d.values() if isinstance(v, list)] + list(d["aliases"].values())
     assert all(isinstance(x, str) for xs in lists for x in xs)
+
+
+def test_gap_phrases_match_around_the_company_name():
+    assert c("Citi cuts TCS target price, keeps sell rating", "TCS").phrase == "cuts * target"
+    assert c("NTPC bags Rs 2,000 crore order from state utility", "NTPC").phrase == "bags * order"
+    assert c("Jefferies raises Titan target on festive demand", "TITAN").direction == UP

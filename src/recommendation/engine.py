@@ -48,6 +48,7 @@ from src.recommendation.scoring import (
     EngineConfig,
     apply_time_rules,
     blend,
+    cap_score,
     categorize,
     confluence,
     setup_score,
@@ -99,13 +100,11 @@ def profile(is_in_play: bool, best: SetupSignal | None) -> str:
     return "NOT_IN_PLAY_SETUP" if strong else "NOT_IN_PLAY"
 
 
-def avoid_reasons(is_in_play: bool, best: SetupSignal | None, category: str) -> tuple[str, ...]:
+def avoid_reasons(best: SetupSignal | None, category: str) -> tuple[str, ...]:
     """Hard quality gates (DECISIONS #15): any reason → AVOID, not rankable.
-    Everything else (time-of-day, extension, weak components) is a soft
-    penalty on the score and stays rankable."""
+    Everything else (not in play, time-of-day, extension, weak components)
+    is a soft penalty or cap on the score and stays rankable (DECISIONS #16)."""
     out = []
-    if not is_in_play:
-        out.append("not in play")
     if best is not None and best.state is SetupState.FAILED:
         out.append("best setup failed")
     if category == "AVOID":
@@ -206,12 +205,16 @@ def evaluate_symbol(
                                   f"{', '.join(families)}"))
         score, adjustments = apply_time_rules(base + applied, mode, as_of.time(), cfg)
         adjustments = pre + adjustments
-        category = categorize(score, cfg)
-        exclusions = avoid_reasons(ip.is_in_play, best, category)
         forced = []
-        if "not in play" in exclusions:
-            forced.append(Reason("penalty", f"Not in play ({ip.reason}): category set to AVOID",
-                                 {"is_in_play": False}))
+        if not ip.is_in_play:
+            n = len(adjustments)
+            score = cap_score(score, cfg.categories["CANDIDATE"] - 0.01, "not_in_play",
+                              f"Not in play ({ip.reason}): capped at WATCH", adjustments)
+            if len(adjustments) == n:        # cap not binding: still say why it can't rise
+                forced.append(Reason("penalty", f"Not in play ({ip.reason}): at most WATCH",
+                                     {"is_in_play": False}))
+        category = categorize(score, cfg)
+        exclusions = avoid_reasons(best, category)
         if "best setup failed" in exclusions:
             forced.append(Reason("penalty", f"{best.name} failed: category set to AVOID",
                                  {"best_state": "FAILED"}))

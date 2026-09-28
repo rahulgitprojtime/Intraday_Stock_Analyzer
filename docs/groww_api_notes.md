@@ -246,4 +246,7 @@ M1 start: https://groww.in/trade-api/docs/python-sdk/annexures
 
 - 2026-09-28: key+secret `get_access_token` raised `GrowwAPIAuthorisationException`
   ("Your API token does not have the required permissions") with the same
-  `.env` that passed the smoke test on 2026-09-27. Cause not yet known.
+  `.env` that passed the smoke test on 2026-09-27. Retried the same day:
+  7/7 passed with no code change (transient/account-side; cause unknown).
+- 1-min history for 2026-08-27..09-25: every session has 362 bars; 15:16-15:27
+  are absent (closing-session minutes), for stocks and NIFTY alike.

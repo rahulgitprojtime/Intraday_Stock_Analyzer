@@ -98,7 +98,7 @@ def blend(components: Sequence[Component]) -> float | None:
     return sum(c.weight * c.value for c in used) / total
 
 
-def _cap(score: float, limit: float, name: str, reason: str, adj: list) -> float:
+def cap_score(score: float, limit: float, name: str, reason: str, adj: list) -> float:
     if score > limit:
         adj.append(Adjustment(name, "cap", limit - score, reason))
         return limit
@@ -118,13 +118,13 @@ def apply_time_rules(
     watch_cap = cfg.categories["CANDIDATE"] - 0.01
     neutral_cap = cfg.categories["WATCH"] - 0.01
     if t < cfg.opening_cap_until:
-        score = _cap(score, watch_cap, "opening_minutes",
+        score = cap_score(score, watch_cap, "opening_minutes",
                      "First minutes of the session: capped at WATCH (heuristic)", adj)
     if mode == "DAY" and t >= cfg.day_cap_after:
-        score = _cap(score, watch_cap, "late_day",
+        score = cap_score(score, watch_cap, "late_day",
                      "Late session for Day mode: capped at WATCH (heuristic)", adj)
     if t >= cfg.close_cap_after:
-        score = _cap(score, neutral_cap, "near_close",
+        score = cap_score(score, neutral_cap, "near_close",
                      "Near the close: capped at NEUTRAL (heuristic)", adj)
     return score, adj
 

@@ -54,9 +54,9 @@ MARKET = nifty_context(INDEX, AS_OF, 120, CFG.market_ramp_pct)
 
 
 def evaluate(bars=None, *, sym="HOT", prep=PREP, liq=LIQ, market=MARKET, as_of=AS_OF,
-             curve=CURVE, cfg=CFG):
+             curve=CURVE, cfg=CFG, ip_cfg=IP_CFG):
     inp = SymbolInputs(sym, bars if bars is not None else trend_bars(sym), prep, curve, liq, INDEX)
-    return evaluate_symbol(inp, market, as_of, cfg, IP_CFG, FILTERS, 120)
+    return evaluate_symbol(inp, market, as_of, cfg, ip_cfg, FILTERS, 120)
 
 
 def walk(obj, key=None):
@@ -128,10 +128,12 @@ def test_illiquid_excluded():
     assert ev.recommendations == {} and ev.excluded_reason.startswith("liquidity")
 
 
-def test_not_in_play_forced_avoid_with_reason():
+def test_not_in_play_capped_at_watch_but_rankable():
     rec = evaluate(trend_bars(vol=50)).recommendations["DAY"]
-    assert rec.category == "AVOID" and rec.profile.startswith("NOT_IN_PLAY")
-    assert rec.eligible_for_top_n is False and "not in play" in rec.exclusion_reasons
+    assert rec.profile.startswith("NOT_IN_PLAY")
+    assert rec.category not in ("STRONG_CANDIDATE", "CANDIDATE")
+    assert rec.score < CFG.categories["CANDIDATE"]
+    assert "not in play" not in rec.exclusion_reasons
     assert any(r.kind == "penalty" and "Not in play" in r.text for r in rec.reasons)
 
 
@@ -144,7 +146,7 @@ def test_market_unavailable_excluded_from_blend():
 
 def test_zero_volume_stock_does_not_crash():
     rec = evaluate(trend_bars(vol=0)).recommendations["SCALP"]
-    assert rec.category == "AVOID"
+    assert rec.category not in ("STRONG_CANDIDATE", "CANDIDATE")     # not in play
 
 
 def test_forming_bar_ignored():
@@ -173,7 +175,8 @@ def test_reasons_are_traceable_to_computed_values():
 
 def test_rank_orders_eligible_by_score_then_symbol_avoid_unranked():
     recs = [evaluate(sym=s).recommendations["DAY"] for s in ("CCC", "AAA", "BBB")]
-    low = evaluate(trend_bars("ZZZ", vol=50), sym="ZZZ").recommendations["DAY"]
+    low = replace(evaluate(sym="ZZZ").recommendations["DAY"], category="AVOID",
+                  eligible_for_top_n=False, exclusion_reasons=("best setup failed",))
     ranked = rank_recommendations([low] + recs)
     assert [r.symbol for r in ranked] == ["AAA", "BBB", "CCC", "ZZZ"]
     assert [r.rank for r in ranked] == [1, 2, 3, None]      # AVOID kept, never ranked
@@ -192,10 +195,9 @@ def test_lower_non_avoid_outranks_higher_avoid():
 def test_avoid_reasons_are_the_hard_quality_gates():
     trig = SetupSignal("ORB5", SetupState.TRIGGERED, "")
     failed = SetupSignal("ORB5", SetupState.FAILED, "")
-    assert avoid_reasons(True, trig, "CANDIDATE") == ()
-    assert avoid_reasons(False, trig, "CANDIDATE") == ("not in play",)
-    assert avoid_reasons(True, failed, "WATCH") == ("best setup failed",)
-    assert avoid_reasons(True, trig, "AVOID") == ("score below NEUTRAL floor",)
+    assert avoid_reasons(trig, "CANDIDATE") == ()   # not-in-play is a WATCH cap, not a gate
+    assert avoid_reasons(failed, "WATCH") == ("best setup failed",)
+    assert avoid_reasons(trig, "AVOID") == ("score below NEUTRAL floor",)
 
 
 def test_soft_penalty_stays_rankable():
@@ -216,11 +218,12 @@ def breakout_bars():
 
 
 def test_confluence_changes_final_score():
-    rec = evaluate(breakout_bars(), sym="BRK").recommendations["SCALP"]
+    ip_all = replace(IP_CFG, min_score=0.0, min_rvol=0.0)    # keep the WATCH cap out of the way
+    rec = evaluate(breakout_bars(), sym="BRK", ip_cfg=ip_all).recommendations["SCALP"]
     assert len(rec.setup["confluence_families"]) >= 2
     bonus = next(a for a in rec.adjustments if a.name == "confluence")
     assert bonus.kind == "bonus" and 0 < bonus.points <= 5
-    plain = evaluate(breakout_bars(), sym="BRK",
-                     cfg=replace(CFG, confluence_bonus={})).recommendations["SCALP"]
+    plain = evaluate(breakout_bars(), sym="BRK", cfg=replace(CFG, confluence_bonus={}),
+                     ip_cfg=ip_all).recommendations["SCALP"]
     assert rec.score == pytest.approx(plain.score + bonus.points)
     assert any(r.kind == "setup" and "families" in r.text for r in rec.reasons)

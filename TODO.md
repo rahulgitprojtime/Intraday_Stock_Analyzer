@@ -6,7 +6,8 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 ## Done: M0 Foundation ✅ · M1 Groww adapter ✅ · M2 Instrument universe ✅
 - [x] Live smoke test of M1 adapter with real credentials (7/7, 2026-09-27)
 - [x] `scripts/fetch_replay_data.py`: download last N real 1-min sessions (universe + NIFTY) into replay layout (`data/replay`, gitignored)
-- [ ] Real-day replay of 2026-09-25 — BLOCKED 2026-09-28: Groww token minting fails ("API token does not have the required permissions"; smoke test fails too). Fix key/permissions on Groww Cloud, then run fetch + `worker --replay data/replay --day 2026-09-25`
+- [x] Real-day replay of 2026-09-25 (26/26 symbols x 21 sessions; full day, schema-valid, 0 errors). Finding: not-in-play forced AVOID emptied the list → WATCH cap (DECISIONS #16)
+- [ ] Break ties among WATCH-capped names (e.g. by pre-cap score) if the dashboard shows many ties
 - [ ] Pin dependency versions (DECISIONS.md #2) after first real run
 
 ## M3 — Daily prep + REST candle pipeline (done)

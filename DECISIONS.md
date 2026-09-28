@@ -161,3 +161,13 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   `exclusion_reasons`). Soft penalties (time-of-day, EXTENDED, future
   sector/volatility) stay rankable. Top-N is drawn from rankable only.
 - `state.json` schema_version 3 (AVOID rank null breaks v2 readers).
+
+### #16 — Not in play caps at WATCH instead of forcing AVOID (2026-09-28, user-approved)
+- First real-day replay (2026-09-25, 25 large caps): time-of-day RVOL
+  rarely reaches `min_rvol` 1.5, so "not in play → AVOID" left 0
+  rankable stocks on 62 of 75 sampled ticks despite TRIGGERED setups.
+- Now not-in-play is a soft cap: score capped just below the CANDIDATE
+  floor (≤ WATCH), stays rankable; in-play names always outrank it.
+  Hard AVOID gates remain: best setup FAILED, score below NEUTRAL floor.
+- Known trade-off: capped names tie at the cap and sort by symbol.
+  Supersedes the "not in play" item of #15. Schema unchanged (v3).

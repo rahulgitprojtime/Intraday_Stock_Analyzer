@@ -81,11 +81,12 @@ Dashboard smoke-tested (AppTest headless + served on a local port).
   parsing fixed for real payloads (pre/post-session rows, null prices,
   null index volume) — docs/groww_api_notes.md.
 
-### M6 follow-up (DECISIONS #15, done)
+### M6 follow-ups (DECISIONS #15, #16, done)
 Confluence counts independent setup families (+0/+2/+3/+5, max 5);
 AVOID candidates are scored but never ranked; state.json schema v3.
 
 ### Next task
-Real-day replay: `scripts/fetch_replay_data.py` ready (tested with a stub);
-live run blocked 2026-09-28 by a Groww auth permission error (see TODO). Then M7: live Groww feed
+Real-day replay done 2026-09-28 (`scripts/fetch_replay_data.py` →
+`data/replay`, gitignored; replay of 2026-09-25 runs clean). Not-in-play
+now caps at WATCH (DECISIONS #16). Next: M7: live Groww feed
 + depth (needs credentials + live-price subscription).

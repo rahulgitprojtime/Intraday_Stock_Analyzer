@@ -261,6 +261,11 @@ def evaluate_symbol(
             if len(adjustments) == n:
                 forced.append(Reason("penalty", f"Sector weak ({sector['reason']}): at most WATCH",
                                      {"verdict": "WEAK"}))
+            pen = min(cfg.sector_weak_penalty, score)     # after caps: ranks below capped peers
+            if pen > 0:
+                score -= pen
+                adjustments.append(Adjustment("sector_weak_penalty", "penalty", -pen,
+                                              "Sector weak: deprioritized"))
         category = categorize(score, cfg)
         exclusions = avoid_reasons(best, category)
         checklist, summary = build_checklist(best, ip, liq, sector, market)
@@ -295,10 +300,13 @@ def evaluate_symbol(
 
 
 def rank_recommendations(recs: Sequence[Recommendation]) -> list[Recommendation]:
-    """Exclude AVOID, rank the rest by score desc then symbol asc
-    (deterministic ties). AVOID follows, unranked (rank None), kept for
-    transparency. Rank history fields stay None until a later milestone."""
-    key = lambda r: (-r.score, r.symbol)  # noqa: E731
+    """Exclude AVOID, rank the rest by score desc, then pre-cap score desc
+    (ties at a cap keep their underlying order, e.g. sector strength —
+    replay 2026-09-25), then symbol. AVOID follows, unranked (rank None),
+    kept for transparency. Rank history fields stay None until later."""
+    def key(r):
+        pre_cap = r.score - sum(a.points for a in r.adjustments if a.kind == "cap")
+        return (-r.score, -pre_cap, r.symbol)
     eligible = sorted((r for r in recs if r.eligible_for_top_n), key=key)
     avoid = sorted((r for r in recs if not r.eligible_for_top_n), key=key)
     return [replace(r, rank=i) for i, r in enumerate(eligible, 1)] + \

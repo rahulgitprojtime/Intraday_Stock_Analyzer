@@ -15,7 +15,7 @@ from src.recommendation.engine import (
     evaluate_symbol,
     rank_recommendations,
 )
-from src.recommendation.models import MODES
+from src.recommendation.models import MODES, Adjustment
 from src.quantitative.setups import SetupSignal, SetupState
 from src.recommendation.scoring import EngineConfig, blend
 from src.utils.config import load_strategy
@@ -307,6 +307,26 @@ def test_weak_sector_caps_at_watch_but_stays_rankable():
     rec = evaluate(sector=sector_block("WEAK", 10.0, -0.4), ip_cfg=IP_ALL).recommendations["DAY"]
     assert rec.score < CFG.categories["CANDIDATE"] and rec.eligible_for_top_n
     assert any(r.kind == "penalty" and "Sector weak" in r.text for r in rec.reasons)
+    pen = next(a for a in rec.adjustments if a.name == "sector_weak_penalty")
+    assert pen.kind == "penalty" and pen.points == -CFG.sector_weak_penalty
+
+
+def test_weak_sector_ranks_below_capped_peers_on_a_quiet_day():
+    """Replay 2026-09-25 10:00: every stock capped at WATCH for not being in
+    play; a WEAK-sector stock must not sort above the others."""
+    quiet = trend_bars(vol=50)                                  # not in play → capped
+    weak = evaluate(quiet, sym="AAA", sector=sector_block("WEAK", 10.0, -0.4))
+    conf = evaluate(quiet, sym="ZZZ", sector=sector_block("CONFIRMED", 90.0, 0.4))
+    ranked = rank_recommendations([weak.recommendations["DAY"], conf.recommendations["DAY"]])
+    assert [r.symbol for r in ranked] == ["ZZZ", "AAA"]
+
+
+def test_ties_at_a_cap_break_by_pre_cap_score_not_symbol():
+    base = evaluate().recommendations["DAY"]
+    capped = lambda sym, pre: replace(base, symbol=sym, score=64.99, adjustments=(  # noqa: E731
+        Adjustment("not_in_play", "cap", 64.99 - pre, "capped"),))
+    ranked = rank_recommendations([capped("AAA", 70.0), capped("ZZZ", 90.0)])
+    assert [r.symbol for r in ranked] == ["ZZZ", "AAA"]
 
 
 def test_unavailable_sector_no_component_no_cap():

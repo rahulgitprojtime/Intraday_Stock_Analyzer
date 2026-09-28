@@ -68,6 +68,7 @@ sector:
   min_peers: 2
   rs_ramp: [-0.5, 0.5]
   weights: {rs: 0.6, peers: 0.4}
+  weak_penalty: 5          # points, applied after caps: WEAK ranks below capped peers
 
 # Live-feed microstructure (M7, SCALP only). Imbalance = (bid qty - ask
 # qty) / total over the depth payload; velocity = ticks in the last

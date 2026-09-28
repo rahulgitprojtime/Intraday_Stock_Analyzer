@@ -32,6 +32,7 @@ class EngineConfig:
     day_cap_after: time
     close_cap_after: time
     categories: dict          # category -> min score (recommendation.categories)
+    sector_weak_penalty: float = 5.0      # M8: after caps, so weak sectors rank below peers
 
     @classmethod
     def from_strategy(cls, strategy: dict) -> EngineConfig:
@@ -51,6 +52,7 @@ class EngineConfig:
             day_cap_after=time.fromisoformat(t["day_cap_after"]),
             close_cap_after=time.fromisoformat(t["close_cap_after"]),
             categories=dict(strategy["recommendation"]["categories"]),
+            sector_weak_penalty=float(strategy.get("sector", {}).get("weak_penalty", 5.0)),
         )
 
 

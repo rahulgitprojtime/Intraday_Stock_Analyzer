@@ -1,8 +1,8 @@
 """Download real 1-min sessions from Groww into replay format.
 
 Writes the last N sessions ending at `--day` for the configured universe
-+ NIFTY + the sector indices in `config/sectors.yaml` (M8) into `IntradayCandleCache` layout (`<out>/<day>/<SYMBOL>.csv`),
-readable by `ReplaySource`. Read-only market data; no orders
++ NIFTY + the sector indices in `config/sectors.yaml` (M8) into
+`IntradayCandleCache` layout (`<out>/<day>/<SYMBOL>.csv`), readable by `ReplaySource`. Read-only market data; no orders
 (DECISIONS #8). Real data is still not strategy evidence without
 walk-forward validation (M10).
 

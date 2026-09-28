@@ -121,3 +121,26 @@ class FeedHealth:
     last_tick_at: datetime | None = None
     stale_symbols: list[str] = field(default_factory=list)
     last_error: str | None = None
+
+
+@dataclass(frozen=True)
+class Tick:
+    """Latest traded price from the live feed (M7). `ts` is exchange time."""
+
+    symbol: str
+    ts: datetime
+    ltp: float
+
+
+@dataclass(frozen=True)
+class DepthSnapshot:
+    """Top of book plus book totals from the live depth feed (M7)."""
+
+    symbol: str
+    ts: datetime                 # exchange time
+    best_bid: float
+    bid_qty: float
+    best_ask: float
+    ask_qty: float
+    total_bid_qty: float         # sum over all levels in the payload
+    total_ask_qty: float

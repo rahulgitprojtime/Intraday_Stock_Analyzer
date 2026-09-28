@@ -53,6 +53,18 @@ rvol:
 regime:
   volatility_lookback_days: 20
 
+# Live-feed microstructure (M7, SCALP only). Imbalance = (bid qty - ask
+# qty) / total over the depth payload; velocity = ticks in the last
+# minute / 5-min average. Linear ramps to 0-100, blended by weight (sum 1).
+# Illustrative defaults, unvalidated (M10).
+microstructure:
+  weights:
+    imbalance: 0.6
+    velocity: 0.4
+  ramps:
+    imbalance: [0.0, 0.4]
+    velocity: [1.0, 2.5]
+
 # Stocks-in-play scanner (M5). Each feature maps linearly to 0-100 between
 # its ramp bounds, then blends by weight (sum 100). Not tuned.
 in_play:

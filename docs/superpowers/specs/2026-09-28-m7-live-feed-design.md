@@ -1,6 +1,6 @@
 # M7 — Live feed + depth: design
 
-Date: 2026-09-28 · Status: user-approved in chat (3 sections), pending spec review
+Date: 2026-09-28 · Status: user-approved (spec review 2026-09-28; weight shift accepted)
 Scope: LONG-only recommendations (DECISIONS #8, #11). Read-only market data; no orders.
 
 ## 1. Goal and success criteria
@@ -25,8 +25,13 @@ feed impact "spread gate + small SCALP weight".
   mints a socket token and starts a NATS client on a daemon thread;
   `consume()` only joins it. nats-py default reconnect + auto-resubscribe;
   disconnect/closed callbacks only log — the caller is never notified. The
-  SDK stores only the latest value per topic. Consequences: staleness by
-  tick age, own restart logic, own tick counting in the callback.
+  SDK stores only the latest value per topic. The `on_data_received`
+  callback receives only `meta` (exchange, segment, feed_key, feed_type),
+  never the data; values are read via `get_ltp()` / `get_market_depth()` /
+  `get_index_value()`, which parse every subscribed topic per call.
+  Consequences: staleness by tick age, own restart logic, and a hybrid
+  read path — the callback only counts ticks per symbol (cheap, exact tick
+  velocity); a 1 s poller thread reads latest values into `FeedStore`.
 - Subscriptions: max 1000; universe is 25 stocks + NIFTY → subscribe all,
   no dynamic top-N.
 
@@ -34,9 +39,9 @@ feed impact "spread gate + small SCALP weight".
 
 | Unit | Responsibility | Depends on |
 |------|----------------|-----------|
-| `src/broker/groww_feed.py` `LiveFeed` | Only feed code touching Groww. Build `GrowwFeed` from the authenticated adapter's client; subscribe by `exchange_token` (LTP + depth per stock, index value for NIFTY); parse payloads into `Tick`/`DepthSnapshot`; push to a sink. `start()`, `stop()`, `restart()`. | growwapi, `src/data/models` |
+| `src/broker/groww_feed.py` `LiveFeed` | Only feed code touching Groww. Build `GrowwFeed` from the authenticated adapter's client; subscribe by `exchange_token` (LTP + depth per stock, index value for NIFTY); callback counts ticks (`store.count_tick`); 1 s poller parses payloads into `Tick`/`DepthSnapshot` (`store.put_ltp`/`put_depth`). `start()`, `stop()`, `restart()`, `poll_once()`. | growwapi, `src/data/models` |
 | `src/data/models.py` | `Tick(symbol, ts, ltp)`, `DepthSnapshot(symbol, ts, best_bid, bid_qty, best_ask, ask_qty, total_bid_qty, total_ask_qty)` | — |
-| `src/market/feed_store.py` `FeedStore` | Thread-safe (one lock). Drops a tick whose (ts, ltp) equals the last one for the symbol and any tick older than the last. Keeps latest LTP, latest depth, deque of tick timestamps (last 5 min). `snapshot(now) -> FeedSnapshot` (immutable). Counts rejected/bad payloads. | models only |
+| `src/data/feed_store.py` `FeedStore` | Thread-safe (one lock). Drops an LTP/depth value whose exchange ts is not newer than the last one for the symbol (dedupe + out-of-order). Keeps latest LTP, latest depth, deque of tick arrival times (last 5 min). All ages use local arrival time, never exchange time (no clock skew). `snapshot(now) -> FeedSnapshot` (immutable). Counts rejected/bad payloads. | models only |
 | `src/quantitative/microstructure.py` | Pure fns: `spread_pct`, `imbalance`, `tick_velocity`, `micro_score`, `symbol_feed(snapshot, symbol, now, stale_s) -> SymbolFeed \| None` | config dict |
 | `src/app/feed_watchdog.py` `FeedWatchdog` | Feed status + restart policy (§6), driven by an injected clock. | `LiveFeed`-like object, `FeedStore` |
 | Engine / liquidity / schema / dashboard | Consume `SymbolFeed` (§4–5). | — |
@@ -106,6 +111,9 @@ Live worker: authenticate → resolve universe → `prepare()` (REST) →
   triggers a restart.
 - **Bad payloads:** missing/zero/non-numeric fields are skipped and
   counted; the callback never raises and holds the lock only to append.
+  The poller catches every exception per getter and keeps running.
+- **Clock:** feed snapshot and watchdog use the worker's real `now`
+  (`generated_at`), not the minute-aligned `as_of`.
 - **Shutdown:** at session end or KeyboardInterrupt, `stop()` unsubscribes;
   the SDK thread is a daemon.
 

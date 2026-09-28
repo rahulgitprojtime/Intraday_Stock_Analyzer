@@ -385,3 +385,17 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
 - Biases stated in every use: history = today's 25 large caps
   (survivorship); no historical news/depth; one day is description, not
   evidence.
+
+### #25 — News unweighted; setup 20% → 25% (2026-09-28, user directive)
+- User: "remove news weightage for now; replace it with setup (20% -> 25%).
+  I will google myself for any news for the stocks you display."
+- Groww's API has no news endpoint (checked growwapi 1.5.0 methods, feed
+  topics, docs and changelog 2026-09-28), so there is no better source to
+  weight yet.
+- Weights: setup 25, volume 20, movement 15, momentum 15, sector 10,
+  market 10, liquidity 5; news none. The news check still runs live and
+  shows on the card checklist and in snapshots (unweighted), so research
+  question 3 (does news add information beyond technicals) can still be
+  answered from data.
+- Strategy version 2026-09-29.m15. Research rows record the version; the
+  historical replay made under m14 is not mixed with m15 results.

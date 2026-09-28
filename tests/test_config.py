@@ -14,10 +14,11 @@ def test_settings_has_no_trading_modes():
     assert "live_trading_confirmed" not in settings
 
 
-def test_engine_weights_are_the_eight_groups_and_sum_to_one():
+def test_engine_weights_are_seven_groups_news_unweighted_and_sum_to_one():
+    """User 2026-09-28: news has no weight (checks it by hand); its 5% went to setup."""
     w = load_strategy()["engine"]["weights"]
-    assert w == {"setup": 0.20, "volume": 0.20, "movement": 0.15, "momentum": 0.15,
-                 "sector": 0.10, "market": 0.10, "liquidity": 0.05, "news": 0.05}
+    assert w == {"setup": 0.25, "volume": 0.20, "movement": 0.15, "momentum": 0.15,
+                 "sector": 0.10, "market": 0.10, "liquidity": 0.05}
     assert abs(sum(w.values()) - 1.0) < 1e-9
 
 

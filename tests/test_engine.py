@@ -382,7 +382,7 @@ def test_positive_news_adds_credibility_bonus_and_passes_check():
     base = evaluate(ip_cfg=IP_ALL).recommendations["DAY"]
     rec = evaluate(ip_cfg=IP_ALL, news=news_block("POSITIVE")).recommendations["DAY"]
     assert comp(rec, "news").value == 100 and comp(base, "news").value is None
-    assert rec.score >= base.score and rec.qualitative["verdict"] == "POSITIVE"
+    assert rec.score == base.score and rec.qualitative["verdict"] == "POSITIVE"   # news unweighted
     n = checks(rec)["news"]
     assert n["status"] == "PASS"
     assert n["detail"] == "upward catalyst: 'HOT bags Rs 900 crore order from NHAI' (Mint +1 outlet, 09:40)"
@@ -392,7 +392,8 @@ def test_negative_news_scores_zero_in_its_group_without_a_cap():
     base = evaluate(ip_cfg=IP_ALL).recommendations["DAY"]
     rec = evaluate(ip_cfg=IP_ALL, news=news_block("NEGATIVE", "DOWN",
                                                   "Citi cuts HOT target")).recommendations["DAY"]
-    assert comp(rec, "news").value == 0 and rec.score <= base.score and rec.eligible_for_top_n
+    assert comp(rec, "news").value == 0 and rec.score == base.score and rec.eligible_for_top_n
+    assert comp(rec, "news").weight is None
     assert not [a for a in rec.adjustments if a.name.startswith("news_")]
     assert checks(rec)["news"]["status"] == "FAIL"
     assert "downward" in checks(rec)["news"]["detail"]

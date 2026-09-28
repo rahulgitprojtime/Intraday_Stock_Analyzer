@@ -5,7 +5,7 @@
 # Identifies the recommendation methodology in paper-trade journals (M10).
 # Bump on any change to scoring, setups, gates, sector or news rules, so
 # results from different versions are never mixed (DECISIONS #20).
-strategy_version: "2026-09-29.m14"
+strategy_version: "2026-09-29.m15"
 
 # M6 baseline quantitative scoring model (DECISIONS #14). Temporary
 # engineering defaults, NOT claimed optimal; M10 validates. Weights exist
@@ -14,14 +14,14 @@ strategy_version: "2026-09-29.m14"
 # excluded from the blend, never defaulted.
 engine:
   weights:                 # positive, must sum to 1.0 (M12, DECISIONS #22, user-chosen)
-    setup: 0.20
+    setup: 0.25              # was 0.20; +0.05 from news (user, 2026-09-28)
     volume: 0.20
     movement: 0.15            # PRICE MOVEMENT (key avoids the word "price": no levels, #11)
     momentum: 0.15
     sector: 0.10
     market: 0.10
     liquidity: 0.05
-    news: 0.05
+    # news: no weight (user checks news by hand); still fetched and shown on the checklist
   state_points: {TRIGGERED: 100, FORMING: 60, EXTENDED: 30, FAILED: 0, NONE: 0}
   # Confluence: additive bonus by number of independent setup families
   # TRIGGERED/FORMING (price_structure, vwap, trend, momentum,

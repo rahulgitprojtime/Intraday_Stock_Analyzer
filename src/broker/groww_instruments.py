@@ -79,6 +79,13 @@ class InstrumentMaster:
     def get_row(self, trading_symbol: str, exchange: str) -> dict | None:
         return self._by_symbol.get((exchange, trading_symbol.upper()))
 
+    def scan_universe(self, exchange: str = "NSE") -> list[Instrument]:
+        """Every stock the market-wide volume scan may consider (M11): the
+        exchange's EQ-series equities with intraday (MIS) allowed."""
+        return [self.resolve(sym, ex) for (ex, sym), row in sorted(self._by_symbol.items())
+                if ex == exchange and row["instrument_type"] == "EQ"
+                and row.get("series") == "EQ" and (row.get("is_intraday") or "").strip() == "1"]
+
     def resolve(self, trading_symbol: str, exchange: str = "NSE") -> Instrument:
         row = self.get_row(trading_symbol, exchange)
         if row is None:

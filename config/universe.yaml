@@ -54,3 +54,17 @@ filters:
   min_avg_traded_value: 50000000     # in rupees
   max_spread_pct: 0.5
   max_universe_size: 200
+
+# Market-wide volume scan (M11, DECISIONS #21). When enabled, the live
+# worker's universe is the top_n stocks by volume change (today's volume
+# vs 20-day average, adjusted for time of day) among all NSE EQ-series,
+# intraday-allowed stocks that pass `filters` and trade above the previous
+# close (long-only). `symbols` above is used only when scan is disabled
+# and by replays.
+scan:
+  enabled: true
+  top_n: 25
+  min_stay_minutes: 10       # a stock stays at least this long once it enters
+  calls_per_minute: 200      # quote budget (Groww Live Data limit is 300/min total)
+  stats_sessions: 20
+  long_only: true

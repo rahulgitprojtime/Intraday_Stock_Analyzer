@@ -110,3 +110,10 @@ def test_is_intraday_parsed_and_universe_requires_mis():
     u = resolve_universe(config, lambda s, e: adapter.resolve_instrument(s, e, "CASH"))
     assert [i.trading_symbol for i in u.stocks] == ["RELIANCE"]
     assert "intraday" in u.rejected["NOMIS"]
+
+
+def test_scan_universe_is_nse_eq_series_with_intraday_allowed():
+    csv_text = CSV + "NSE,7777,NOMIS,NSE-NOMIS,No Mis Co,EQ,CASH,EQ,INE000000002,,,,,1,0.05,,,1,1,NOMIS-EQ,0\n"
+    got = InstrumentMaster.from_csv_text(csv_text).scan_universe()
+    assert [(i.trading_symbol, i.exchange_token, i.name) for i in got] == \
+        [("RELIANCE", "2885", "Reliance Industries")]

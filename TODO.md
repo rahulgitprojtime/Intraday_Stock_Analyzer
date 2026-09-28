@@ -91,5 +91,11 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 ## M16 — Whole-market history + price band ✅ build (DECISIONS #26)
 - [x] Price band 250..2500 (scan pool, ranking, liquidity gate)
 - [x] Daily-candle store, per-day pools (prior sessions only), ReplayScanner, worker --scan-universe, downloader
-- [ ] Download data/universe_1y (running 2026-09-29 00:00), whole-market research replay, EXPLORE report
+- [x] Downloaded data/universe_1y (737 instruments, 238 sessions, 3.2 GB); whole-market replay 218 days;
+  EXPLORE report reports/universe_explore_m15.md (2026-09-29, 537k panel rows, 155 days):
+  final score, RVOL, volume, momentum and movement all rank NEGATIVELY with forward excess return
+  within the day (IC -0.01..-0.03, |t| 4-8): among the day's movers the most extended slightly
+  mean-revert. RVOL top vs bottom quintile: FINDING worse. EMA_PULLBACK and GAP_AND_GO beat no
+  setup (+0.01..0.04%). Sector, confluence, score bands, 2% move, lunch: no evidence. Nothing
+  clears the 0.1% cost. Hypotheses only until the validate split.
 - [ ] Sector map for scanned stocks (NSE index constituents)

@@ -41,7 +41,14 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [ ] Observe a full live session (open → close): watchdog restarts on a real disconnect, REST refresh latency (~5-20 s/minute for 25 stocks)
 - [ ] Pin dependency versions (growwapi 1.5.0, nats-py) now that live runs work
 
-## M8 — Sector + market breadth + relative-strength context
-## M9 — Qualitative/news/catalyst engine (structured, sourced only)
+## M8 — Sector funnel + prerequisites checklist ✅ (DECISIONS #18)
+- [x] sectors.yaml + sector verdicts (index vs NIFTY + peer breadth), sector_context component
+- [x] Weak sector: cap at WATCH + penalty after caps; tie-break by pre-cap score
+- [x] Prerequisites checklist + summary per stock; dashboard Sector/Prerequisites columns + card checklist; schema v5
+- [x] Real replay 2026-09-25 with 9 sector indices: CONFIRMED lead, WEAK deprioritized
+- [ ] Verify NIFTYCDTY membership for RELIANCE/ONGC/NTPC/POWERGRID/ULTRACEMCO/ADANIENT
+- [ ] Later: exchange-wide breadth, INDIAVIX regime (not needed by the funnel)
+## M9 — News check in the funnel (structured, sourced only)
+- [ ] Fill the `news` prerequisite (currently NOT_CHECKED) from a real, linked source; no source → NO_RELEVANT_INFORMATION, never invented
 ## M10 — Historical validation and weight/feature evaluation
 ## M11 — Streamlit refinement · M12 — Performance/operational hardening

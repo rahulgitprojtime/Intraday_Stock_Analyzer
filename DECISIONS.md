@@ -192,3 +192,29 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
 - `BrokerAdapter` streaming stubs removed; streaming lives in
   `src/broker/groww_feed.py`; `GrowwAdapter.api_client()` hands the SDK
   client to it. State schema v4 adds a top-level `feed` block.
+
+### #18 — M8 sector funnel + prerequisites checklist; schema v5 (2026-09-28, user-approved design, no spec by request)
+- User intent: weak sector → deprioritize; good candidate → confirm the
+  sector (other stocks in it moving) → technicals → top 10; news in
+  parallel (M9). Each listed stock shows what was checked and how it came
+  out. Approach "funnel stages with soft effects + checklist" chosen over
+  a hard gate (would empty the list on quiet days) and a pure blend.
+- `config/sectors.yaml` (user-maintained; CSV has no sector): 9 sectors
+  mapped to Groww NSE indices; LT, BHARTIARTL, TITAN have none → sector
+  UNAVAILABLE, still eligible, flagged (user choice). NIFTYCDTY
+  membership is best-effort.
+- Verdict (`src/market/sector.py`): rs = sector index % since open − NIFTY's;
+  peers = *other* universe members up since open. CONFIRMED: rs ≥ +0.2
+  and (< 2 usable peers or ≥ 60% up); WEAK: rs ≤ −0.2 or (≥ 2 peers and
+  ≤ 40% up); stale/missing → UNAVAILABLE (never guessed, no cap).
+- Scoring: `sector_context` component 0.10 (both modes); weights setup
+  0.45 / in_play 0.30 / market 0.05 / microstructure 0.10 / sector 0.10.
+  WEAK → capped at WATCH **and** −5 after caps. Replay 2026-09-25 showed
+  why: every stock was already at the not-in-play cap, so a cap alone
+  changed nothing and ties sorted alphabetically (WEAK AXISBANK #1).
+  Ranking ties now break by pre-cap score, then symbol (supersedes the
+  #16 trade-off).
+- `prerequisites` (technicals, in play, liquidity, sector, market, news)
+  with PASS/WARN/FAIL/NA/NOT_CHECKED + detail, and a one-line
+  `prerequisites_summary`; news NOT_CHECKED until M9. Schema v5.
+- Out of scope: exchange-wide breadth, INDIAVIX, NSE-sourced membership.

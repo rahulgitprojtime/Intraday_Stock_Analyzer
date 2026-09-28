@@ -86,6 +86,25 @@ def table_rows(recs: Sequence[dict]) -> list[dict]:
             "Setup State": r["setup"]["best_state"],
             "RVOL": "-" if rvol is None else f"{rvol:.1f}x",
             "In Play": "Yes" if q["is_in_play"] else "No",
+            "Sector": _sector_cell(r["sector_context"]),
             "Market Context": "unavailable" if m["status"] != "available" else f"{m['score']:.0f}",
+            "Prerequisites": r["prerequisites_summary"],
         })
     return rows
+
+
+def _sector_cell(sc: dict) -> str:
+    if sc["status"] != "available":
+        return "unavailable"
+    return f"{sc['sector']} {sc['verdict'].lower()}"
+
+
+CHECK_MARK = {"PASS": "✓", "WARN": "~", "FAIL": "✗", "NA": "–", "NOT_CHECKED": "–"}
+CHECK_LABEL = {"technicals": "Technicals", "in_play": "In play", "liquidity": "Liquidity",
+               "sector": "Sector", "market": "Market", "news": "News"}
+
+
+def checklist_lines(rec: dict) -> list[str]:
+    """What was checked before listing this stock, in funnel order (M8)."""
+    return [f"{CHECK_MARK[c['status']]} {CHECK_LABEL.get(c['check'], c['check'])}: {c['detail']}"
+            for c in rec["prerequisites"]]

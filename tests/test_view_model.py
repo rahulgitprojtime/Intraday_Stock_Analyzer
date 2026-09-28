@@ -1,7 +1,8 @@
 import json
 from datetime import datetime, time, timedelta
 
-from app.view_model import DISCLAIMER, avoided, banners, load_state, select, table_rows
+from app.view_model import (DISCLAIMER, avoided, banners, checklist_lines, load_state, select,
+                            table_rows)
 from src.app.worker import write_state
 from tests.test_worker import GEN, context, run_tick
 from tests.fakes.replay_fixture import REPLAY_DAY
@@ -77,7 +78,9 @@ def test_table_rows_columns_and_no_prices(tmp_path):
     recs = real_state(tmp_path)["modes"]["SCALP"]
     rows = table_rows(recs)
     assert list(rows[0]) == ["Rank", "Symbol", "Category", "Score", "Best Setup", "Setup State",
-                             "RVOL", "In Play", "Market Context"]
+                             "RVOL", "In Play", "Sector", "Market Context", "Prerequisites"]
+    assert rows[0]["Sector"] == "unavailable"               # fixture has no sector index
+    assert rows[0]["Prerequisites"] == recs[0]["prerequisites_summary"]
     assert [row["Rank"] for row in rows] == [r["rank"] for r in recs]
 
 
@@ -88,3 +91,12 @@ def test_dashboard_never_imports_broker_or_data_layers():
     for path in Path("app").glob("*.py"):
         imports = re.findall(r"^\s*(?:from|import)\s+(\S+)", path.read_text(), re.M)
         assert not [m for m in imports if m.startswith(("src.broker", "src.data"))], path
+
+
+def test_checklist_lines_in_funnel_order_with_status_marks(tmp_path):
+    rec = real_state(tmp_path)["modes"]["DAY"][0]
+    lines = checklist_lines(rec)
+    assert [line[2:].split(":")[0] for line in lines] == [
+        "Technicals", "In play", "Liquidity", "Sector", "Market", "News"]
+    assert lines[-1] == "– News: not checked yet (M9)"
+    assert lines[3] == "– Sector: no sector index for this stock"

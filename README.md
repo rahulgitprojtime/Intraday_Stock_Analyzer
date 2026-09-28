@@ -63,6 +63,10 @@ possible). DEMO data is synthetic and is not strategy evidence.
 
 ## Configuration
 
+Sector confirmation (M8) uses `config/sectors.yaml`: sector → NSE index +
+member stocks. Keep it in sync with `universe.yaml`; a startup check
+reports members outside the universe.
+
 All tunable behavior lives in `config/*.yaml`, not in code:
 - `settings.yaml` — storage, feed, candle timeframes.
 - `strategy.yaml` — M6 engine baseline weights, time heuristics, categories,

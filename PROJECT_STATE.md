@@ -12,7 +12,7 @@ by intraday traders (ORB, VWAP, PDH, CPR, EMA pullback, momentum burst),
 Scalp (1-min) and Day (5/15-min) modes, stocks-in-play pre-filter,
 time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 
-## Current milestone: M7 ✅ (live feed + depth) → next: M8 sector/breadth
+## Current milestone: M8 ✅ (sector funnel + checklist) → next: M9 news
 
 ### Completed
 - **M0** foundation: layered architecture, config, data models, `BrokerAdapter`.
@@ -72,8 +72,16 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   dashboard feed status. `scripts/feed_smoke.py`. Live worker verified
   2026-09-28 (REST + feed): LIVE, 24/24 SCALP with feed metrics.
 
+- **M8** (DECISIONS #18): `config/sectors.yaml`, `src/market/sector.py`
+  (CONFIRMED/NEUTRAL/WEAK/UNAVAILABLE from sector index vs NIFTY + peers),
+  `sector_context` component, weak sector capped at WATCH and −5 after
+  caps, ties broken by pre-cap score, `src/recommendation/prerequisites.py`
+  checklist + summary per stock (news NOT_CHECKED until M9), schema v5,
+  dashboard Sector/Prerequisites columns and card checklist. Worker loads
+  9 sector indices (replay + live); `fetch_replay_data.py` downloads them.
+
 ### Tests
-220 passing (was 169 before 2026-09-28) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+243 passing (169 at the start of 2026-09-28) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — unblocked 2026-09-27 (pandas 3.0.6, pyarrow 25.0.1, streamlit
@@ -97,5 +105,6 @@ AVOID candidates are scored but never ranked; state.json schema v3.
 
 ### Next task
 Real-day replay done 2026-09-28; not-in-play caps at WATCH (DECISIONS #16).
-M7 done and live-verified. Next: observe one full live session (TODO),
-then M8: sector + market breadth + relative-strength context.
+M7 live-verified; M8 done. Next: M9 — fill the news prerequisite from a
+real sourced feed (brainstorm the source first); observe a full live
+session.

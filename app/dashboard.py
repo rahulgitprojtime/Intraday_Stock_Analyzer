@@ -22,6 +22,7 @@ from app.view_model import (  # noqa: E402
     RANKABLE_CATEGORIES,
     avoided,
     banners,
+    checklist_lines,
     load_state,
     select,
     table_rows,
@@ -48,6 +49,9 @@ def _card(r: dict) -> None:
         chips = " ".join(f"`{s['name']}: {s['state']}`" for s in r["setup"]["signals"]
                          if s["state"] != "NONE")
         st.markdown(chips or "No active setups")
+        st.markdown("**Prerequisites checked**")
+        for line in checklist_lines(r):
+            st.write(line)
         for c in r["components"]:
             if c["status"] != "available" or c["value"] is None:
                 st.caption(f"{c['name']}: unavailable")

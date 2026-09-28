@@ -69,7 +69,8 @@ def render() -> None:
     for level, text in banners(state, datetime.now()):
         getattr(st, level)(text)
     st.caption(f"As of {state['as_of']} · source: {state['source']} · "
-               f"in play: {state['in_play_count']}/{state['universe_count']}")
+               f"in play: {state['in_play_count']}/{state['universe_count']} · "
+               f"feed: {state['feed']['status']}")
     recs = select(state["modes"][mode], categories, min_score, top_n)
     if recs:
         st.dataframe(table_rows(recs), hide_index=True, width="stretch")

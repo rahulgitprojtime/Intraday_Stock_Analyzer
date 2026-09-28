@@ -29,7 +29,7 @@ def test_load_valid_state(tmp_path):
     path = tmp_path / "state.json"
     write_state(path, real_state(tmp_path))
     state, err = load_state(path)
-    assert err is None and state["schema_version"] == 3
+    assert err is None and state["schema_version"] == 4
 
 
 def test_banners_demo_stale_and_disclaimer_last(tmp_path):
@@ -40,6 +40,9 @@ def test_banners_demo_stale_and_disclaimer_last(tmp_path):
     assert not any("stale" in text for _, text in fresh)
     stale = banners(state, GEN + timedelta(minutes=10))
     assert any(level == "error" and "stale" in text for level, text in stale)
+    assert not any("feed" in text.lower() for _, text in fresh)         # replay: OFF
+    down = banners(state | {"feed": state["feed"] | {"status": "DOWN"}}, GEN)
+    assert any(level == "warning" and "Live feed DOWN" in text for level, text in down)
     all_text = " ".join(t for _, t in stale).lower()
     assert not [p for p in BANNED_PHRASES if p in all_text]
 

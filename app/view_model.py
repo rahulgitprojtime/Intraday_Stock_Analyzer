@@ -46,6 +46,10 @@ def banners(state: dict, now: datetime) -> list[tuple[str, str]]:
     if age > STALE_AFTER_SECONDS:
         out.append(("error", f"State is stale: last update {int(age)} s ago. "
                              "Is the worker running?"))
+    feed = state.get("feed") or {}
+    if feed.get("status") in ("STALE", "DOWN"):
+        out.append(("warning", f"Live feed {feed['status']}: spread check and Scalp "
+                               "microstructure paused; candles still refresh."))
     if state.get("excluded"):
         out.append(("info", f"{len(state['excluded'])} symbol(s) excluded "
                             "(stale data, liquidity, or errors)."))

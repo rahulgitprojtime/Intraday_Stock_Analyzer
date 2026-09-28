@@ -1,10 +1,13 @@
 import json
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 import pytest
 
 from src.app.sources import ReplaySource
-from src.app.worker import base_context, main, prepare, run_tick
+from src.app.feed_watchdog import FeedConfig, FeedWatchdog
+from src.app.worker import base_context, main, prepare, run_loop, run_tick
+from src.data.feed_store import FeedStore
+from src.data.models import DepthSnapshot
 from src.recommendation.schema import validate_state
 from tests.fakes.replay_fixture import REPLAY_DAY, write_replay_fixture
 
@@ -24,7 +27,9 @@ def context(root, **fixture):
 def test_tick_writes_schema_valid_ranked_state(tmp_path):
     state = run_tick(context(tmp_path), AS_OF, GEN)
     assert validate_state(state) == []
-    assert state["schema_version"] == 3 and state["source"] == "replay"
+    assert state["schema_version"] == 4 and state["source"] == "replay"
+    assert state["feed"] == {"status": "OFF", "last_tick_age_s": None, "restarts": 0,
+                             "subscribed": 0, "bad_payloads": 0}
     assert state["universe_count"] == 2 and state["errors"] == []
     for mode in ("SCALP", "DAY"):
         recs = state["modes"][mode]
@@ -92,3 +97,60 @@ def test_cli_replay_writes_state_and_is_deterministic(tmp_path):
 def test_cli_rejects_empty_replay_day(tmp_path):
     with pytest.raises(SystemExit):
         run_cli(tmp_path, tmp_path / "s.json")
+
+
+class StubFeed:
+    subscribed = 5
+
+    def __init__(self):
+        self.started = self.stopped = 0
+
+    def start(self):
+        self.started += 1
+
+    def restart(self):
+        pass
+
+    def stop(self):
+        self.stopped += 1
+
+
+def live_like(tmp_path):
+    """Replay candles + a live FeedStore/watchdog, as the live worker wires them."""
+    ctx = context(tmp_path)
+    ctx.feed_store, ctx.watchdog = FeedStore(), FeedWatchdog(StubFeed(), FeedConfig())
+    ctx.watchdog.start(GEN - timedelta(minutes=5))
+    return ctx
+
+
+def test_live_feed_reaches_scalp_and_feed_block(tmp_path):
+    ctx = live_like(tmp_path)
+    for i in range(30):                                   # ticks up to GEN, after as_of
+        ctx.feed_store.count_tick("AAA", GEN - timedelta(seconds=i))
+    ctx.feed_store.put_depth(DepthSnapshot("AAA", GEN, 99.95, 10, 100.05, 10, 600, 200), GEN)
+    state = run_tick(ctx, AS_OF, GEN)
+    assert validate_state(state) == []
+    assert state["feed"] == {"status": "LIVE", "last_tick_age_s": 0.0, "restarts": 0,
+                             "subscribed": 5, "bad_payloads": 0}
+    recs = {r["symbol"]: r for r in state["modes"]["SCALP"]}
+    micro = recs["AAA"]["quantitative"]["microstructure"]
+    assert micro["spread_pct"] is not None and micro["last_tick_age_s"] == 0.0
+    assert recs["BBB"]["quantitative"]["microstructure"] is None     # no ticks for BBB
+
+
+def test_silent_feed_reports_down(tmp_path):
+    ctx = live_like(tmp_path)
+    state = run_tick(ctx, AS_OF, GEN)
+    assert state["feed"]["status"] == "DOWN" and state["feed"]["restarts"] == 1
+
+
+def test_run_loop_stops_feed_even_on_error(tmp_path):
+    ctx = live_like(tmp_path)
+
+    def clock():
+        yield AS_OF
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        run_loop(ctx, clock(), tmp_path / "s.json", delay=0.0, ticks=None)
+    assert ctx.watchdog.feed.stopped == 1 and (tmp_path / "s.json").exists()

@@ -5,7 +5,7 @@
 # Identifies the recommendation methodology in paper-trade journals (M10).
 # Bump on any change to scoring, setups, gates, sector or news rules, so
 # results from different versions are never mixed (DECISIONS #20).
-strategy_version: "2026-09-28.m9"
+strategy_version: "2026-09-29.m14"
 
 # M6 baseline quantitative scoring model (DECISIONS #14). Temporary
 # engineering defaults, NOT claimed optimal; M10 validates. Weights exist

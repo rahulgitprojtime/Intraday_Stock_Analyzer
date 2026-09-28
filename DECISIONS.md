@@ -339,3 +339,49 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   1-min candles for the active set — under the 300/min cap.
 - `scan_now.py --save` writes the top symbols; `fetch_replay_data.py
   --symbols-file` downloads replay data for them.
+
+### #24 — M14 research loop: snapshot → outcome → evaluation (2026-09-28, user directive; PRE-REGISTERED)
+- User: answers must come "from your data, not from assumptions about what
+  experts use". Committed BEFORE any result was seen.
+- Snapshots (`src/research/snapshots.py`): every scored stock every 5 min
+  live (15 min for the historical replay) + an event row when a stock moves
+  up into WATCH or better. Flat rows: group scores, sub-signals, raw %
+  values (day change, VWAP distance, ROC, RSI, ADX, volume acceleration),
+  setup states, confluence, sector, news, microstructure, time rules,
+  pre-rule score, strategy version + config hash + git commit. No prices.
+- Outcomes (`src/research/outcomes.py`): entry = open of the snapshot
+  minute's bar (scored only on closed bars, so no look-ahead); exit = close
+  after 5/15/30/60 min; MFE/MAE; excess vs NIFTY and the sector index;
+  net of an assumed 0.1% round trip. Windows past 15:25 are truncated
+  (left empty), missing bars → None.
+- Evaluation (`src/research/evaluate.py`), fixed rules: panel rows only;
+  metric = excess return vs NIFTY; 95% intervals by day-resampling
+  bootstrap; < 30 rows or < 20 days → INSUFFICIENT; FINDING only if the
+  interval excludes 0 at ≥ 2 horizons with one sign and the sign holds in
+  both chronological halves; else NO EVIDENCE.
+- The ten questions (report sections): (1) RVOL quintiles + within-movement
+  rank correlation; (2) sector CONFIRMED vs WEAK beyond technicals
+  (outcome minus same technical-score decile mean); (3) news POSITIVE vs
+  NO_RELEVANT_INFORMATION beyond technicals (live only); (4) confluence 3+
+  and 2 vs 1; (5) score bands 80+ vs 65-79 vs 50-64, per mode; (6) day
+  change buckets 2-3% and > 3% vs 1-2% (no explicit 2% rule exists; the
+  closest are the DAY momentum ROC ramp and the 0-3% movement ramp);
+  (7) SCALP microstructure top vs bottom tercile, 5/15 min (live only);
+  (8) lunch 11:30-13:30 vs neighbouring hours at the same pre-penalty
+  score ≥ 50 — the penalty is justified only if lunch is worse; (9) each
+  setup TRIGGERED vs no setup; (10) group correlation matrix + each
+  group's own rank correlation (redundant = corr > 0.7 and no separate value).
+- Anything else noticed is a hypothesis for later, not a finding.
+- Splits (chronological, never shuffled): history data/replay_1y —
+  explore 2025-11-03..2026-06-30, validate 2026-07-01..2026-08-31, test
+  2026-09-01..2026-09-28 (used once per proposed change). Live snapshots
+  from 2026-09-29 are a separate forward test on the scanned universe.
+- A change = new strategy_version, compared with the current one on the
+  held-out period; weights are never fitted on the whole dataset.
+- Strategy version bumped to 2026-09-29.m14 (M12/M13 changed scoring).
+- Operations: Windows Task Scheduler, weekdays 08:40 worker, 15:45 label +
+  reports (`scripts/live_day.ps1`, logs/). Runs only while the user is
+  logged on; the PC must be on.
+- Biases stated in every use: history = today's 25 large caps
+  (survivorship); no historical news/depth; one day is description, not
+  evidence.

@@ -21,7 +21,7 @@ and existing outputs — no prices in the output (DECISIONS #11).
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.data.models import Candle
 from src.indicators.core import adx, ema, roc, rsi, vwap
@@ -39,6 +39,7 @@ class GroupScore:
     name: str
     value: float | None
     parts: dict
+    raw: dict = field(default_factory=dict)   # unramped % values for research (M14); no prices
 
 
 def _ramp(x: float | None, lo: float, hi: float) -> float | None:
@@ -47,9 +48,9 @@ def _ramp(x: float | None, lo: float, hi: float) -> float | None:
     return max(0.0, min(100.0, (x - lo) / (hi - lo) * 100))
 
 
-def _group(name: str, parts: dict) -> GroupScore:
+def _group(name: str, parts: dict, raw: dict | None = None) -> GroupScore:
     have = [v for v in parts.values() if v is not None]
-    return GroupScore(name, sum(have) / len(have) if have else None, parts)
+    return GroupScore(name, sum(have) / len(have) if have else None, parts, raw or {})
 
 
 def _last(series):
@@ -78,7 +79,8 @@ def price_group(bars: Sequence[Candle], prep: DailyPrep | None,
         structure = 0.0
     return _group("movement", {"change": _ramp(change, 0, 3), "range": _ramp(range_expansion, 0.3, 1.0),
                             "position": _ramp(pos, 0.5, 1.0), "vwap": _ramp(vwap_dist, 0, 1),
-                            "structure": structure})
+                            "structure": structure},
+                  {"day_change_pct": change, "vwap_dist_pct": vwap_dist})
 
 
 def volume_group(rvol: float | None, bars: Sequence[Candle]) -> GroupScore:
@@ -87,7 +89,8 @@ def volume_group(rvol: float | None, bars: Sequence[Candle]) -> GroupScore:
         prior = sum(b.volume for b in bars[-20:-5]) / 15
         recent = sum(b.volume for b in bars[-5:])
         accel = recent / (prior * 5) if prior > 0 else None
-    return _group("volume", {"rvol": _ramp(rvol, 1, 4), "acceleration": _ramp(accel, 1, 3)})
+    return _group("volume", {"rvol": _ramp(rvol, 1, 4), "acceleration": _ramp(accel, 1, 3)},
+                  {"acceleration": accel})
 
 
 def momentum_group(bars: Sequence[Candle], roc_full_pct: float) -> GroupScore:
@@ -106,7 +109,8 @@ def momentum_group(bars: Sequence[Candle], roc_full_pct: float) -> GroupScore:
     return _group("momentum", {
         "roc": _ramp(now, 0, roc_full_pct), "acceleration": _ramp(accel, 0, roc_full_pct / 2),
         "ema_structure": sum(checks) / len(checks) * 100 if checks else None,
-        "rsi": rsi_pts, "adx": adx_pts})
+        "rsi": rsi_pts, "adx": adx_pts},
+        {"roc5_pct": now, "rsi": rs, "adx": ax})
 
 
 def setup_group(setup_score: float, confluence_bonus: float) -> GroupScore:

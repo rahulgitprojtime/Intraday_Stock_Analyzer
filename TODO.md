@@ -76,3 +76,10 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 ## M13 — Fast scan cycle ✅ (DECISIONS #23)
 - [x] Batch OHLC/LTP pre-rank of the pool, parallel quotes for the top movers, shared limiter, stale-quote expiry, SDK timeout
 - [ ] Live-check one cycle's duration and call count at the open
+
+## M14 — Research loop ✅ (DECISIONS #24, pre-registered)
+- [x] Snapshot recorder, outcome labeller, evaluator (10 questions), worker wiring, scripts, Task Scheduler
+- [x] Dry run on 2026-09-25 replay (4,116 rows, 4,020 labeled)
+- [ ] Historical run over data/replay_1y; report on the EXPLORE split only (to 2026-06-30)
+- [ ] 2026-09-29 first live research day: check logs/worker_*.log at open, reports/live_2026-09-29.md after 15:45
+- [ ] After >= 20 live days: live report; proposed changes tested on validate then test split

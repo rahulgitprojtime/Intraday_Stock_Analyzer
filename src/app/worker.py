@@ -33,6 +33,7 @@ from src.utils.config import load_settings, load_strategy, load_universe, load_y
 
 SESSION_END = time(15, 30)
 DEFAULT_OUT = Path("data/processed/state.json")
+LIVE_SNAPSHOTS = Path("data/research/live/snapshots")   # M14 research record (DECISIONS #24)
 
 
 @dataclass
@@ -311,11 +312,18 @@ def _news_service(symbols: list[str]):
                        cfg, raw.get("aliases") or {}, symbols)
 
 
-def run_loop(ctx: WorkerContext, clock, out: Path, delay: float, ticks: int | None) -> None:
+def run_loop(ctx: WorkerContext, clock, out: Path, delay: float, ticks: int | None,
+             recorder=None) -> None:
     """Tick until the clock ends; the live feed is always stopped on exit."""
     try:
         for n, as_of in enumerate(clock, 1):
-            write_state(out, run_tick(ctx, as_of, datetime.now()))
+            state = run_tick(ctx, as_of, datetime.now())
+            write_state(out, state)
+            if recorder is not None:
+                try:
+                    recorder.record(state)
+                except Exception as exc:        # research must never stop the worker
+                    ctx.errors.append(f"snapshots: {type(exc).__name__}: {exc}")
             if ticks and n >= ticks:
                 break
             if delay:
@@ -335,6 +343,10 @@ def main(argv=None) -> int:
                    help="simulated minutes per real minute; 0 = no delay")
     p.add_argument("--ticks", type=int, default=None, help="stop after N ticks")
     p.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    p.add_argument("--snapshots", type=Path, default=None,
+                   help=f"record research snapshots here (live default {LIVE_SNAPSHOTS})")
+    p.add_argument("--no-snapshots", action="store_true")
+    p.add_argument("--panel-minutes", type=int, default=5, help="snapshot every scored stock this often")
     a = p.parse_args(argv)
     if a.replay:
         if a.day is None:
@@ -365,7 +377,14 @@ def main(argv=None) -> int:
         scanner.start()
     if ctx.watchdog is not None:
         ctx.watchdog.start(datetime.now())
-    run_loop(ctx, clock, a.out, delay, a.ticks)
+    recorder = None
+    snap_dir = a.snapshots or (None if a.replay else LIVE_SNAPSHOTS)
+    if snap_dir is not None and not a.no_snapshots:
+        from src.paper.journal import version_info
+        from src.research.snapshots import SnapshotRecorder
+        recorder = SnapshotRecorder(snap_dir, version_info() | {"source": ctx.source_name},
+                                    a.panel_minutes)
+    run_loop(ctx, clock, a.out, delay, a.ticks, recorder)
     return 0
 
 

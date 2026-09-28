@@ -49,5 +49,5 @@ def test_trade_id_stable_and_unique():
 
 def test_version_info_records_strategy_config_and_commit():
     v = version_info()
-    assert v["strategy_version"] == "2026-09-28.m9"
+    assert v["strategy_version"] == "2026-09-29.m14"
     assert len(v["config_hash"]) == 12 and v["git_commit"]

@@ -277,7 +277,8 @@ def evaluate_symbol(
             category="AVOID" if exclusions else category,
             profile=profile(ip.is_in_play, best), components=comps,
             quantitative=_quantitative(sscore, ip, liq, inp.feed) | {
-                "groups": {g.name: {"value": g.value, "parts": g.parts} for g in groups}},
+                "groups": {g.name: {"value": g.value, "parts": g.parts, "raw": g.raw}
+                           for g in groups}},
             setup=setup_block,
             market_context=market_block, sector_context=sector,
             qualitative=inp.news or qualitative_unavailable(), adjustments=tuple(adjustments),

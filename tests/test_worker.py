@@ -27,7 +27,7 @@ def context(root, **fixture):
 def test_tick_writes_schema_valid_ranked_state(tmp_path):
     state = run_tick(context(tmp_path), AS_OF, GEN)
     assert validate_state(state) == []
-    assert state["schema_version"] == 4 and state["source"] == "replay"
+    assert state["schema_version"] == 5 and state["source"] == "replay"
     assert state["feed"] == {"status": "OFF", "last_tick_age_s": None, "restarts": 0,
                              "subscribed": 0, "bad_payloads": 0}
     assert state["universe_count"] == 2 and state["errors"] == []

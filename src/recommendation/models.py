@@ -46,9 +46,9 @@ class DataQuality:
     missing_inputs: tuple[str, ...] = ()
 
 
-def sector_unavailable() -> dict:
-    return {"status": UNAVAILABLE, "sector": None, "sector_score": None,
-            "sector_relative_strength": None, "sector_market_alignment": None}
+def sector_unavailable(reason: str = "sector context unavailable") -> dict:
+    from src.market.sector import unavailable_context
+    return unavailable_context(None, None, reason)
 
 
 def qualitative_unavailable() -> dict:
@@ -79,6 +79,8 @@ class Recommendation:
     rank_change: int | None = None
     score_change: float | None = None
     time_in_top_n: int | None = None
+    prerequisites: tuple[dict, ...] = ()    # M8 checklist: {check, status, detail}
+    prerequisites_summary: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)

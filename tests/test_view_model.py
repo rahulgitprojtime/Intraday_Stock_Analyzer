@@ -29,7 +29,7 @@ def test_load_valid_state(tmp_path):
     path = tmp_path / "state.json"
     write_state(path, real_state(tmp_path))
     state, err = load_state(path)
-    assert err is None and state["schema_version"] == 4
+    assert err is None and state["schema_version"] == 5
 
 
 def test_banners_demo_stale_and_disclaimer_last(tmp_path):

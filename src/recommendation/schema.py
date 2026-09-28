@@ -10,7 +10,7 @@ from dataclasses import fields
 
 from src.recommendation.models import MODES, Recommendation
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 TOP_KEYS = ("schema_version", "as_of", "generated_at", "source", "demo", "data_age_seconds",
             "market", "modes", "excluded", "in_play_count", "universe_count", "errors",
             "feed")                     # v4 (M7): live feed status block

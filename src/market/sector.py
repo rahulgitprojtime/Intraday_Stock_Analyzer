@@ -123,7 +123,7 @@ def _ramp(x: float, lo: float, hi: float) -> float:
     return max(0.0, min(100.0, (x - lo) / (hi - lo) * 100))
 
 
-def _unavailable(sector: str | None, index: str | None, reason: str) -> dict:
+def unavailable_context(sector: str | None, index: str | None, reason: str) -> dict:
     return {"status": "unavailable", "sector": sector, "index": index, "sector_score": None,
             "sector_relative_strength": None, "stock_vs_sector": None, "peers_up": None,
             "peers_total": None, "verdict": UNAVAILABLE, "sector_market_alignment": None,
@@ -135,9 +135,9 @@ def stock_context(symbol: str, snapshot: Mapping[str, SectorState],
     """The `sector_context` block for one stock (no prices)."""
     st = next((s for s in snapshot.values() if symbol in s.members), None)
     if st is None:
-        return _unavailable(None, None, "no sector index for this stock")
+        return unavailable_context(None, None, "no sector index for this stock")
     if st.rs_vs_nifty is None:
-        return _unavailable(st.name, st.index, "sector index or NIFTY data unavailable")
+        return unavailable_context(st.name, st.index, "sector index or NIFTY data unavailable")
     peers = [c for m, c in st.member_changes.items() if m != symbol]
     use_peers = len(peers) >= cfg.min_peers
     up = sum(1 for c in peers if c > 0)

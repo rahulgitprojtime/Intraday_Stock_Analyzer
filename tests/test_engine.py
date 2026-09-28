@@ -55,9 +55,9 @@ MARKET = nifty_context(INDEX, AS_OF, 120, CFG.market_ramp_pct)
 
 
 def evaluate(bars=None, *, sym="HOT", prep=PREP, liq=LIQ, market=MARKET, as_of=AS_OF,
-             curve=CURVE, cfg=CFG, ip_cfg=IP_CFG, feed=None, filters=FILTERS):
+             curve=CURVE, cfg=CFG, ip_cfg=IP_CFG, feed=None, filters=FILTERS, sector=None):
     inp = SymbolInputs(sym, bars if bars is not None else trend_bars(sym), prep, curve, liq, INDEX,
-                       feed)
+                       feed, sector)
     return evaluate_symbol(inp, market, as_of, cfg, ip_cfg, filters, 120)
 
 
@@ -97,7 +97,9 @@ def test_hot_stock_scored_in_both_modes():
 def test_future_components_are_unavailable_not_fabricated():
     rec = evaluate().recommendations["DAY"]
     assert rec.sector_context["status"] == "unavailable"
-    assert all(v is None for k, v in rec.sector_context.items() if k != "status")
+    labels = ("status", "verdict", "reason")                   # labels, not values
+    assert rec.sector_context["verdict"] == "UNAVAILABLE"
+    assert all(v is None for k, v in rec.sector_context.items() if k not in labels)
     assert rec.qualitative == {"status": "unavailable"}
     q = rec.quantitative
     assert q["momentum_score"] is None and q["trend_score"] is None
@@ -279,3 +281,64 @@ def test_feed_reasons_are_traceable_and_show_no_prices():
 def test_wide_spread_excludes_in_both_modes():
     ev = evaluate(feed=replace(FEED, spread_pct=0.9), filters=FILTERS | {"max_spread_pct": 0.5})
     assert ev.recommendations == {} and "spread above maximum" in ev.excluded_reason
+
+
+def sector_block(verdict, score, rs):
+    return {"status": "available", "sector": "IT", "index": "NIFTYIT", "sector_score": score,
+            "sector_relative_strength": rs, "stock_vs_sector": 0.1, "peers_up": 3,
+            "peers_total": 3 if verdict == "CONFIRMED" else 1, "verdict": verdict,
+            "sector_market_alignment": True, "reason": f"IT {rs:+.2f}% vs NIFTY, x/3 peers up"}
+
+
+IP_ALL = replace(IP_CFG, min_score=0.0, min_rvol=0.0)          # keep the in-play cap away
+
+
+def test_confirmed_sector_outranks_neutral_and_is_reported():
+    conf = evaluate(sector=sector_block("CONFIRMED", 90.0, 0.4), ip_cfg=IP_ALL)
+    neut = evaluate(sector=sector_block("NEUTRAL", 30.0, 0.0), ip_cfg=IP_ALL)
+    for mode in MODES:
+        c, n = conf.recommendations[mode], neut.recommendations[mode]
+        assert c.score > n.score
+        assert comp(c, "sector_context").status == "available"
+        assert c.sector_context["verdict"] == "CONFIRMED"
+
+
+def test_weak_sector_caps_at_watch_but_stays_rankable():
+    rec = evaluate(sector=sector_block("WEAK", 10.0, -0.4), ip_cfg=IP_ALL).recommendations["DAY"]
+    assert rec.score < CFG.categories["CANDIDATE"] and rec.eligible_for_top_n
+    assert any(r.kind == "penalty" and "Sector weak" in r.text for r in rec.reasons)
+
+
+def test_unavailable_sector_no_component_no_cap():
+    base = evaluate(ip_cfg=IP_ALL).recommendations["DAY"]
+    assert comp(base, "sector_context").status == "unavailable"
+    assert base.sector_context["verdict"] == "UNAVAILABLE"
+    assert not any("Sector weak" in r.text for r in base.reasons)
+
+
+def checks(rec):
+    return {c["check"]: c for c in rec.prerequisites}
+
+
+def test_prerequisites_checklist_statuses_and_summary():
+    rec = evaluate(sector=sector_block("CONFIRMED", 90.0, 0.4), feed=FEED,
+                   ip_cfg=IP_ALL).recommendations["SCALP"]
+    c = checks(rec)
+    assert list(c) == ["technicals", "in_play", "liquidity", "sector", "market", "news"]
+    assert c["technicals"]["status"] == "PASS" and c["in_play"]["status"] == "PASS"
+    assert c["liquidity"]["status"] == "PASS" and "spread 0.04%" in c["liquidity"]["detail"]
+    assert c["sector"]["status"] == "PASS" and "IT +0.40% vs NIFTY" in c["sector"]["detail"]
+    assert c["news"] == {"check": "news", "status": "NOT_CHECKED",
+                         "detail": "not checked yet (M9)"}
+    assert rec.prerequisites_summary.startswith("Checked: technicals ✓")
+    assert "news – not checked" in rec.prerequisites_summary
+
+
+def test_prerequisites_fail_warn_and_na():
+    rec = evaluate(trend_bars(vol=50), sector=sector_block("WEAK", 10.0, -0.4)
+                   ).recommendations["DAY"]
+    c = checks(rec)
+    assert c["in_play"]["status"] == "FAIL" and c["sector"]["status"] == "FAIL"
+    assert c["liquidity"]["status"] == "WARN"                          # spread unchecked
+    none = evaluate(market=MarketContext("unavailable", None, None)).recommendations["DAY"]
+    assert checks(none)["sector"]["status"] == "NA" and checks(none)["market"]["status"] == "NA"

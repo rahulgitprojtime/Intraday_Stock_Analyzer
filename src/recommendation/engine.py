@@ -34,6 +34,7 @@ from src.quantitative.setups import (
     vwap_reclaim,
 )
 from src.recommendation.data_quality import assess_data_quality
+from src.recommendation.prerequisites import build_checklist
 from src.recommendation.models import (
     AVAILABLE,
     MODES,
@@ -68,6 +69,7 @@ class SymbolInputs:
     liquidity: LiquidityHistory | None
     index_bars: Sequence[Candle]        # NIFTY 1-min bars up to as_of
     feed: SymbolFeed | None = None      # live feed metrics (M7); None in replay/stale
+    sector: dict | None = None          # sector_context block (M8); None → unavailable
 
 
 @dataclass(frozen=True)
@@ -210,6 +212,8 @@ def evaluate_symbol(
         return SymbolEvaluation(inp.symbol, excluded_reason=f"liquidity: {liq.reason}")
 
     ip = score_in_play(inp.symbol, bars, inp.prep, inp.volume_curve, inp.index_bars, in_play_cfg)
+    sector = inp.sector or sector_unavailable()
+    sector_ok = sector["status"] == AVAILABLE and sector["sector_score"] is not None
     market_block = {"status": market.status, "score": market.score, "source": market.source,
                     "nifty_change_pct": market.nifty_change_pct}
     recs = {}
@@ -228,7 +232,9 @@ def evaluate_symbol(
                       AVAILABLE if micro is not None else UNAVAILABLE),
             Component("liquidity", liq.score, w("liquidity"),
                       AVAILABLE if liq.score is not None else UNAVAILABLE),
-            Component("sector_context", None, w("sector_context"), UNAVAILABLE),
+            Component("sector_context", sector["sector_score"] if sector_ok else None,
+                      w("sector_context") if sector_ok else None,
+                      AVAILABLE if sector_ok else UNAVAILABLE),
             Component("qualitative", None, w("qualitative"), UNAVAILABLE),
         )
         base = blend(comps)
@@ -248,8 +254,16 @@ def evaluate_symbol(
             if len(adjustments) == n:        # cap not binding: still say why it can't rise
                 forced.append(Reason("penalty", f"Not in play ({ip.reason}): at most WATCH",
                                      {"is_in_play": False}))
+        if sector["verdict"] == "WEAK":
+            n = len(adjustments)
+            score = cap_score(score, cfg.categories["CANDIDATE"] - 0.01, "sector_weak",
+                              f"Sector weak ({sector['reason']}): capped at WATCH", adjustments)
+            if len(adjustments) == n:
+                forced.append(Reason("penalty", f"Sector weak ({sector['reason']}): at most WATCH",
+                                     {"verdict": "WEAK"}))
         category = categorize(score, cfg)
         exclusions = avoid_reasons(best, category)
+        checklist, summary = build_checklist(best, ip, liq, sector, market)
         if "best setup failed" in exclusions:
             forced.append(Reason("penalty", f"{best.name} failed: category set to AVOID",
                                  {"best_state": "FAILED"}))
@@ -270,11 +284,12 @@ def evaluate_symbol(
             category="AVOID" if exclusions else category,
             profile=profile(ip.is_in_play, best), components=comps,
             quantitative=_quantitative(sscore, ip, liq, inp.feed), setup=setup_block,
-            market_context=market_block, sector_context=sector_unavailable(),
+            market_context=market_block, sector_context=sector,
             qualitative=qualitative_unavailable(), adjustments=tuple(adjustments),
             reasons=_reasons(signals, ip, market, liq, adjustments,
                              _feed_reasons(inp.feed, mode) + forced), data_quality=dq,
             eligible_for_top_n=not exclusions, exclusion_reasons=exclusions,
+            prerequisites=checklist, prerequisites_summary=summary,
         )
     return SymbolEvaluation(inp.symbol, recs, None, ip.is_in_play)
 

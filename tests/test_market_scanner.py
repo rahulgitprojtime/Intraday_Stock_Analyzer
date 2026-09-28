@@ -17,12 +17,17 @@ def inst(sym):
 
 
 class FakeAdapter:
-    def __init__(self, avg=None, today_vol=None, last=None, fail=()):
+    def __init__(self, avg=None, today_vol=None, last=None, fail=(), daily_fail=(), empty=()):
         self.avg, self.today_vol, self.last, self.fail = avg or {}, today_vol or {}, last or {}, set(fail)
+        self.daily_fail, self.empty = set(daily_fail), set(empty)
         self.daily_calls, self.quote_calls = [], []
 
     def get_daily_candles(self, instrument, start, end):
         self.daily_calls.append((instrument.trading_symbol, start, end))
+        if instrument.trading_symbol in self.daily_fail:
+            raise OSError("connection reset")
+        if instrument.trading_symbol in self.empty:
+            return []                                   # e.g. a new listing: no history yet
         v = self.avg.get(instrument.trading_symbol, 1_000_000)
         return [Candle(instrument, 1440, datetime.combine(end - timedelta(days=k), time()),
                        100, 100, 100, 100, v) for k in range(25, -1, -1)]
@@ -37,15 +42,36 @@ class FakeAdapter:
                      last - 100, last - 100)
 
 
-def scanner(tmp_path, adapter, syms=("AAA", "BBB", "CCC", "THIN")):
-    cfg = ScannerConfig(top_n=2, min_stay_minutes=10, calls_per_minute=200, stats_sessions=20)
+def scanner(tmp_path, adapter, syms=("AAA", "BBB", "CCC", "THIN"), sleeps=None):
+    cfg = ScannerConfig(top_n=2, min_stay_minutes=10, calls_per_minute=200, stats_sessions=20,
+                        prep_calls_per_minute=120)
     return MarketScanner(adapter, [inst(s) for s in syms], FILTERS, cfg, CURVE,
-                         tmp_path / "cache", tmp_path / "scans")
+                         tmp_path / "cache", tmp_path / "scans",
+                         sleep=(sleeps.append if sleeps is not None else lambda s: None))
 
 
 def test_config_from_universe_yaml():
     c = ScannerConfig.from_dict(load_universe()["scan"])
-    assert (c.top_n, c.min_stay_minutes, c.calls_per_minute, c.stats_sessions) == (25, 10, 200, 20)
+    assert (c.top_n, c.min_stay_minutes, c.calls_per_minute, c.stats_sessions,
+            c.prep_calls_per_minute) == (25, 10, 200, 20, 150)
+
+
+def test_failed_fetches_are_never_cached_and_retried_next_time(tmp_path):
+    s = scanner(tmp_path, FakeAdapter(daily_fail={"BBB"}, empty={"CCC"}))
+    errors = s.prepare(TODAY)
+    assert errors == ["daily BBB: OSError: connection reset"]
+    assert s.pool == ["AAA", "THIN"] and "CCC" not in s.stats
+    again = scanner(tmp_path, FakeAdapter())
+    again.prepare(TODAY)
+    assert [c[0] for c in again.adapter.daily_calls] == ["BBB"]     # only the failure refetched
+    assert again.pool == ["AAA", "BBB", "THIN"]                      # CCC: known "no data"
+
+
+def test_prep_is_paced(tmp_path):
+    sleeps = []
+    s = scanner(tmp_path, FakeAdapter(), sleeps=sleeps)
+    s.prepare(TODAY)
+    assert len(sleeps) == 4 and all(0 < x <= 0.5 for x in sleeps)   # 120/min -> <= 0.5 s gaps
 
 
 def test_prepare_builds_liquid_pool_and_caches_per_day(tmp_path):

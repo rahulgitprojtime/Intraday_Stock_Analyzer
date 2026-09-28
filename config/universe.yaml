@@ -67,4 +67,5 @@ scan:
   min_stay_minutes: 10       # a stock stays at least this long once it enters
   calls_per_minute: 200      # quote budget (Groww Live Data limit is 300/min total)
   stats_sessions: 20
+  prep_calls_per_minute: 150 # morning daily-stats pacing (200 back-to-back measured OK)
   long_only: true

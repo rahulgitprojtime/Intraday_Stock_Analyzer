@@ -46,8 +46,13 @@ python -m src.app.worker --replay data/replay --day 2026-09-25 --speed 60
 # REST 1-min candles + live feed (LTP, depth, NIFTY) in one process (M7)
 python scripts/groww_smoke.py         # REST check
 python scripts/feed_smoke.py          # live feed check (~2 min)
-python -m src.app.worker
+python scripts/scan_now.py --top 25   # market-wide volume scan, once (read-only)
+python -m src.app.worker              # start by ~09:00: daily stats for 1,643 stocks first
 ```
+
+With `scan.enabled` in `config/universe.yaml` (default), the live universe
+is the top 25 by volume change across all NSE EQ intraday stocks, re-picked
+every minute; the curated `symbols` list is used only by replays.
 
 `INTRADAY_STATE=<path> streamlit run app/dashboard.py --server.port 8502`
 points a second dashboard at another state file (e.g. a replay next to

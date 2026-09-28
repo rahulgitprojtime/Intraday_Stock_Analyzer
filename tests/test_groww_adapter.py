@@ -343,8 +343,10 @@ def test_get_daily_candles_one_call_keeps_midnight_rows(monkeypatch):
     monkeypatch.setenv("GROWW_AUTH_MODE", "api_key")
     monkeypatch.setenv("GROWW_API_KEY", "k1")
     monkeypatch.setenv("GROWW_API_SECRET", "s1")
+    # Verified live 2026-09-28: past daily rows have open = null (only the
+    # latest day has an open). Close + volume are what the volume scan needs.
     fake.historical_candles_responses = [{"candles": [
-        ["2026-09-25T00:00:00", 40.0, 41.0, 39.5, 40.8, 67330474, None],
+        ["2026-09-25T00:00:00", None, 41.0, 39.5, 40.8, 67330474, None],
         ["2026-09-28T00:00:00", 40.8, 40.9, 39.5, 39.7, None, None],
         ["2026-09-24T00:00:00", None, None, None, None, None, None]]}]
     adapter = GrowwAdapter()
@@ -355,6 +357,7 @@ def test_get_daily_candles_one_call_keeps_midnight_rows(monkeypatch):
     assert kwargs["candle_interval"] == "1day" and kwargs["groww_symbol"] == "NSE-SUZLON"
     assert [c.timestamp.date() for c in candles] == [date(2026, 9, 25), date(2026, 9, 28)]
     assert candles[0].volume == 67330474 and candles[1].volume == 0
+    assert candles[0].open is None and candles[0].close == 40.8        # never invented
     assert all(c.timeframe_minutes == 1440 for c in candles)
     with pytest.raises(ValueError, match="180"):
         adapter.get_daily_candles(_cash_instrument("SUZLON"), date(2026, 1, 1), date(2026, 9, 28))

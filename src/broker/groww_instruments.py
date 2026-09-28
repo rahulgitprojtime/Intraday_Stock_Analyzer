@@ -81,10 +81,13 @@ class InstrumentMaster:
 
     def scan_universe(self, exchange: str = "NSE") -> list[Instrument]:
         """Every stock the market-wide volume scan may consider (M11): the
-        exchange's EQ-series equities with intraday (MIS) allowed."""
+        exchange's EQ-series equities with intraday (MIS) allowed, company
+        shares only — ETF/fund units also trade as EQ series but carry INF
+        ISINs (equity shares: INE)."""
         return [self.resolve(sym, ex) for (ex, sym), row in sorted(self._by_symbol.items())
                 if ex == exchange and row["instrument_type"] == "EQ"
-                and row.get("series") == "EQ" and (row.get("is_intraday") or "").strip() == "1"]
+                and row.get("series") == "EQ" and (row.get("is_intraday") or "").strip() == "1"
+                and (row.get("isin") or "").startswith("INE")]
 
     def resolve(self, trading_symbol: str, exchange: str = "NSE") -> Instrument:
         row = self.get_row(trading_symbol, exchange)

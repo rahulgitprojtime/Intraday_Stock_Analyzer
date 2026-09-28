@@ -271,3 +271,31 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   finding; the policy was not loosened to manufacture trades.
 - Known biases stated in reports/docs: survivorship (today's 25 large
   caps), no historical spread/depth, small samples (< 30 → warning).
+
+### #21 — M11 market-wide volume scan picks the live universe (2026-09-28, user directive)
+- User: "full market scan; don't limit to a few stocks"; then "pick the top
+  25 by highest change in volume via Groww API, then rank them by our
+  parameters". The hand-written 25-stock list now serves only replays and
+  scan-disabled runs; live, the universe is chosen each minute.
+- Verified live 2026-09-28: 1,643 NSE EQ-series stocks allow intraday (of
+  4,292 cash instruments). `get_quote` carries today's cumulative volume
+  (~194 sequential calls/min); `get_ohlc` (50/call) has no volume; the
+  feed has no volume (#9). Daily candles: one call, ≤ 180 days.
+- Pipeline: daily candles for all 1,643 (cached per day, ~8 min) → 20-day
+  stats → liquid pool (existing filters) → background quote sweep at
+  200 calls/min (Groww Live Data cap 300/min shared with the worker) →
+  volume change = today's volume ÷ (20-day avg × market share of a normal
+  day traded by now) → long-only (above previous close, user choice a) →
+  top 25 (min stay 10 min; pinned symbols never drop) → existing M4-M9
+  funnel ranks them → dashboard top 10.
+- The time-of-day share is a market-wide curve measured from 6,025 real
+  stock-days (config/market_volume_curve.json; 7% by 09:30, 39% by noon,
+  81% by 15:00), rebuilt with scripts/build_volume_curve.py.
+- New members: existing prep (one 1-min history call), feed resubscribed
+  on membership change, news uses curated aliases else the Groww name.
+  Sector map still covers only the curated names → others "not available".
+- Every tick's scan is appended to data/scans/<date>.jsonl, building a
+  point-in-time history for M10 (a historical market-wide backtest would
+  need ~21k calls / ~9 GB of 1-min data; deferred).
+- State schema v6: top-level `universe` block (source, pool, quoted,
+  sweeps, active symbols with volume change).

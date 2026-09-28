@@ -365,8 +365,10 @@ class GrowwAdapter(BrokerAdapter):
     def get_daily_candles(self, instrument: Instrument, start: date, end: date) -> list[Candle]:
         """Daily candles in one request (M11 volume scan). Verified live
         2026-09-28: CANDLE_INTERVAL_DAY rows are stamped 00:00 (so the
-        intraday session filter must not apply) and a request may span at
-        most 180 days. Null volume → 0; rows with null prices skipped."""
+        intraday session filter must not apply), a request may span at most
+        180 days, and past days come with open = null (only the latest day
+        has an open). Such rows are kept with `open=None` — never filled in;
+        only rows without a close are skipped. Null volume → 0."""
         self._ensure_authenticated()
         if (end - start).days > MAX_DAILY_WINDOW_DAYS:
             raise ValueError(f"daily candles: at most {MAX_DAILY_WINDOW_DAYS} days per request")
@@ -382,10 +384,11 @@ class GrowwAdapter(BrokerAdapter):
         out = []
         for row in resp.get("candles", []):
             ts_raw, o, h, l, c, v = row[0], row[1], row[2], row[3], row[4], row[5]
-            if None in (o, h, l, c):
+            if c is None:
                 continue
-            out.append(Candle(instrument, 1440, self._parse_candle_timestamp(ts_raw), float(o),
-                              float(h), float(l), float(c), int(v) if v is not None else 0))
+            num = lambda x: float(x) if x is not None else None  # noqa: E731
+            out.append(Candle(instrument, 1440, self._parse_candle_timestamp(ts_raw), num(o),
+                              num(h), num(l), float(c), int(v) if v is not None else 0))
         return sorted(out, key=lambda c: c.timestamp)
 
     def get_historical_candles(self, request: HistoricalCandleRequest) -> list[Candle]:

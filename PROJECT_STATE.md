@@ -12,7 +12,7 @@ by intraday traders (ORB, VWAP, PDH, CPR, EMA pullback, momentum burst),
 Scalp (1-min) and Day (5/15-min) modes, stocks-in-play pre-filter,
 time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 
-## Current milestone: M10a ✅ (paper replay simulation) → next: M10b (more history, multi-day evaluation)
+## Current milestone: M11 ✅ (market-wide volume scan) → next: first live session with the scan; M10b
 
 ### Completed
 - **M0** foundation: layered architecture, config, data models, `BrokerAdapter`.
@@ -88,6 +88,12 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 - **M10a** (DECISIONS #20): `src/paper/` policy, risk, simulator, journal,
   metrics, report; `scripts/paper_replay.py` drives it from the existing
   worker tick. First real run 2026-09-25: NO TRADES (all capped at WATCH).
+
+- **M11** (DECISIONS #21): live universe = top 25 by volume change across
+  all 1,643 NSE EQ intraday stocks (`src/app/market_scanner.py`,
+  `src/quantitative/volume_scan.py`, `src/app/dynamic_universe.py`,
+  `get_daily_candles`, `scripts/scan_now.py`). 12 months of 1-min data for
+  the curated 25 + indices in `data/replay_1y` (M10b baseline).
 
 ### Tests
 342 passing (169 at the start of 2026-09-28) locally (`.venv`, Python 3.13, pytest). `growwapi` is not

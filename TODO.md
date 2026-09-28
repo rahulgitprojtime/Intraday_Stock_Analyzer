@@ -59,9 +59,16 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [x] Tests: policy, risk, exits incl. same-bar ambiguity, accounting, journal immutability, determinism, look-ahead poison, order safety
 - [x] First real run 2026-09-25: NO TRADES (max score 64.99, all capped at WATCH)
 ### M10b — more data + multi-day evaluation
-- [ ] Fetch 6-12 months of 1-min history (35 symbols) via fetch_replay_data.py; run paper_replay --all
+- [x] Fetched 243 sessions (2025-10-03..2026-09-28) of 1-min history for 35 symbols -> data/replay_1y
+- [ ] Run paper_replay --all on data/replay_1y (curated-25 baseline; survivorship caveat)
 - [ ] Multi-day aggregate report (equity curve, drawdown, breakdowns with sample sizes); dashboard PAPER TRADING / SIMULATION + M10 Evaluation sections
 ### M10c — experiments + live paper
 - [ ] Baseline vs experiment (config overrides), chronological train/validation/test, walk-forward; component ablation
 - [ ] Live paper trading on the running worker (paper.yaml enabled), after smoke tests + replay checks
 ## M11 — Streamlit refinement · M12 — Performance/operational hardening
+
+## M11 — Market-wide volume scan ✅ (DECISIONS #21)
+- [x] Daily stats for all 1,643 NSE EQ intraday stocks, liquid pool, 200/min quote sweep, volume change vs market curve, long-only top 25, dynamic universe in the live worker, scan log
+- [ ] First live session with the scan (start worker by ~09:00 for the stats prep)
+- [ ] Sector map for scanned stocks (currently only the curated names)
+- [ ] Paper trading on the scanned universe uses data/scans history (forward test)

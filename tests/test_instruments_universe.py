@@ -117,3 +117,10 @@ def test_scan_universe_is_nse_eq_series_with_intraday_allowed():
     got = InstrumentMaster.from_csv_text(csv_text).scan_universe()
     assert [(i.trading_symbol, i.exchange_token, i.name) for i in got] == \
         [("RELIANCE", "2885", "Reliance Industries")]
+
+
+def test_scan_universe_excludes_etfs_by_isin():
+    """ETF/fund units trade as EQ series; their ISINs start INF (stocks: INE)."""
+    csv_text = CSV + "NSE,8888,NIFTYBEES,NSE-NIFTYBEES,NIFTYBEES,EQ,CASH,EQ,INF204KB14I2,,,,,1,0.01,,,1,1,NIFTYBEES-EQ,1\n"
+    assert [i.trading_symbol for i in InstrumentMaster.from_csv_text(csv_text).scan_universe()] \
+        == ["RELIANCE"]

@@ -37,17 +37,21 @@ class ScannerConfig:
     min_stay_minutes: float = 10
     calls_per_minute: float = 200
     stats_sessions: int = 20
+    prep_calls_per_minute: float = 150
 
     @classmethod
     def from_dict(cls, d: dict) -> ScannerConfig:
         return cls(int(d.get("top_n", 25)), float(d.get("min_stay_minutes", 10)),
-                   float(d.get("calls_per_minute", 200)), int(d.get("stats_sessions", 20)))
+                   float(d.get("calls_per_minute", 200)), int(d.get("stats_sessions", 20)),
+                   float(d.get("prep_calls_per_minute", 150)))
 
 
 class MarketScanner:
     def __init__(self, adapter, instruments: list, filters: ScanFilters, cfg: ScannerConfig,
-                 curve: list[float], cache_dir: str | Path, scans_dir: str | Path) -> None:
+                 curve: list[float], cache_dir: str | Path, scans_dir: str | Path,
+                 sleep=_time.sleep) -> None:
         self.adapter, self.filters, self.cfg, self.curve = adapter, filters, cfg, curve
+        self._sleep = sleep
         self.instruments = {i.trading_symbol: i for i in instruments}
         self.cache_dir, self.scans_dir = Path(cache_dir), Path(scans_dir)
         self.stats: dict[str, DailyStats] = {}
@@ -63,27 +67,32 @@ class MarketScanner:
     # -- morning prep ---------------------------------------------------------
 
     def prepare(self, today: date, progress=None) -> list[str]:
+        """Incremental and paced. The day's cache holds each stock's stats,
+        or null for "no history" (e.g. a new listing); a *failed* fetch is
+        never cached, so a rerun fetches only what is missing (2026-09-28:
+        a bad run must not poison the day)."""
         cache = self.cache_dir / f"daily_stats_{today.isoformat()}.json"
+        known: dict = json.loads(cache.read_text(encoding="utf-8")) if cache.exists() else {}
+        todo = [s for s in sorted(self.instruments) if s not in known]
         errors: list[str] = []
-        if cache.exists():
-            raw = json.loads(cache.read_text(encoding="utf-8"))
-            self.stats = {k: DailyStats(**v) for k, v in raw.items()}
-        else:
-            end = today - timedelta(days=1)
-            for n, (sym, inst) in enumerate(sorted(self.instruments.items()), 1):
-                try:
-                    bars = self.adapter.get_daily_candles(
-                        inst, today - timedelta(days=STATS_LOOKBACK_DAYS), end)
-                    st = daily_stats(sym, bars, today, self.cfg.stats_sessions)
-                    if st is not None:
-                        self.stats[sym] = st
-                except Exception as exc:          # one bad symbol never stops the prep
-                    errors.append(f"daily {sym}: {type(exc).__name__}: {exc}")
-                if progress and n % 100 == 0:
-                    progress(n, len(self.instruments))
+        end = today - timedelta(days=1)
+        gap = 60.0 / self.cfg.prep_calls_per_minute
+        for n, sym in enumerate(todo, 1):
+            started = _time.monotonic()
+            try:
+                bars = self.adapter.get_daily_candles(
+                    self.instruments[sym], today - timedelta(days=STATS_LOOKBACK_DAYS), end)
+                st = daily_stats(sym, bars, today, self.cfg.stats_sessions)
+                known[sym] = asdict(st) if st is not None else None
+            except Exception as exc:              # one bad symbol never stops the prep
+                errors.append(f"daily {sym}: {type(exc).__name__}: {exc}")
+            if progress and n % 100 == 0:
+                progress(n, len(todo))
+            self._sleep(max(0.0, gap - (_time.monotonic() - started)))
+        if todo:
             cache.parent.mkdir(parents=True, exist_ok=True)
-            cache.write_text(json.dumps({k: asdict(v) for k, v in self.stats.items()}),
-                             encoding="utf-8")
+            cache.write_text(json.dumps(known), encoding="utf-8")
+        self.stats = {k: DailyStats(**v) for k, v in known.items() if v}
         f = self.filters
         self.pool = sorted(s for s, st in self.stats.items()
                            if s in self.instruments and st.prev_close >= f.min_price

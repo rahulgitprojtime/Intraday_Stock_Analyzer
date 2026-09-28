@@ -12,7 +12,7 @@ by intraday traders (ORB, VWAP, PDH, CPR, EMA pullback, momentum burst),
 Scalp (1-min) and Day (5/15-min) modes, stocks-in-play pre-filter,
 time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 
-## Current milestone: M6 ✅ (quantitative recommendation MVP) → next: M7 live feed
+## Current milestone: M7 ✅ (live feed + depth) → next: M8 sector/breadth
 
 ### Completed
 - **M0** foundation: layered architecture, config, data models, `BrokerAdapter`.
@@ -62,8 +62,18 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   (`scripts/make_demo_data.py`), Streamlit dashboard (`app/`). Replay of
   the demo day runs end to end; LiveSource is unrun (no credentials).
 
+- **M7** (spec `docs/superpowers/specs/2026-09-28-m7-live-feed-design.md`,
+  DECISIONS #17): `src/broker/groww_feed.py` `LiveFeed` (callback counts
+  ticks, 1 s poller reads LTP/depth/NIFTY), `src/data/feed_store.py`,
+  `src/quantitative/microstructure.py` (spread, imbalance, velocity with a
+  5-min warm-up), `src/app/feed_watchdog.py` (tick age + stock coverage,
+  restart with backoff), spread liquidity gate, SCALP-only microstructure
+  component (weights 0.50/0.30/0.10/0.10), state schema v4 `feed` block,
+  dashboard feed status. `scripts/feed_smoke.py`. Live worker verified
+  2026-09-28 (REST + feed): LIVE, 24/24 SCALP with feed metrics.
+
 ### Tests
-169 passing locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+220 passing (was 169 before 2026-09-28) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — unblocked 2026-09-27 (pandas 3.0.6, pyarrow 25.0.1, streamlit
@@ -86,7 +96,7 @@ Confluence counts independent setup families (+0/+2/+3/+5, max 5);
 AVOID candidates are scored but never ranked; state.json schema v3.
 
 ### Next task
-Real-day replay done 2026-09-28 (`scripts/fetch_replay_data.py` →
-`data/replay`, gitignored; replay of 2026-09-25 runs clean). Not-in-play
-now caps at WATCH (DECISIONS #16). Next: M7: live Groww feed
+Real-day replay done 2026-09-28; not-in-play caps at WATCH (DECISIONS #16).
+M7 done and live-verified. Next: observe one full live session (TODO),
+then M8: live Groww feed
 + depth (needs credentials + live-price subscription).

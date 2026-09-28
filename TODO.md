@@ -8,7 +8,6 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [x] `scripts/fetch_replay_data.py`: download last N real 1-min sessions (universe + NIFTY) into replay layout (`data/replay`, gitignored)
 - [x] Real-day replay of 2026-09-25 (26/26 symbols x 21 sessions; full day, schema-valid, 0 errors). Finding: not-in-play forced AVOID emptied the list → WATCH cap (DECISIONS #16)
 - [ ] Break ties among WATCH-capped names (e.g. by pre-cap score) if the dashboard shows many ties
-- [ ] Pin dependency versions (DECISIONS.md #2) after first real run
 
 ## M3 — Daily prep + REST candle pipeline (done)
 - [x] Universe: MIS-allowed (`is_intraday=1`) liquid NSE EQ stocks
@@ -36,8 +35,11 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [x] Dashboard smoke run (AppTest headless + live server) after pandas/pyarrow unblocked
 - [x] Confluence by setup family (max +5); AVOID excluded from ranking; schema v3 (DECISIONS #15)
 
-## M7 — Live feed + depth (unlocks Scalp mode quality)
-- [ ] GrowwFeed wrapper: LTP/index/depth for top ~20; dedupe, reconnect, stale detection; tick velocity, spread, bid/ask imbalance
+## M7 — Live feed + depth ✅ (spec docs/superpowers/specs/2026-09-28-m7-live-feed-design.md, DECISIONS #17)
+- [x] LiveFeed (callback tick counts + 1 s poller), FeedStore, microstructure, watchdog (tick age + stock coverage), spread gate, SCALP component, schema v4, dashboard feed status
+- [x] Live-verified 2026-09-28: 25 stocks + NIFTY, 24/24 SCALP with spread/imbalance/velocity, LIVE, 0 restarts
+- [ ] Observe a full live session (open → close): watchdog restarts on a real disconnect, REST refresh latency (~5-20 s/minute for 25 stocks)
+- [ ] Pin dependency versions (growwapi 1.5.0, nats-py) now that live runs work
 
 ## M8 — Sector + market breadth + relative-strength context
 ## M9 — Qualitative/news/catalyst engine (structured, sourced only)

@@ -206,6 +206,9 @@ feed.consume()  # blocking — run in its own thread/process, never in Streamlit
   restarts on low stock coverage (DECISIONS #17). The 1-min REST refresh
   also slowed during the outage (8 worker ticks took 28 min) but every
   state written stayed valid.
+- On shutdown the SDK may log `Error: 'NoneType' object has no attribute
+  'update'`: a message raced the unsubscribe (`_update_feed_data` on a
+  removed topic). Harmless; seen once at exit 2026-09-28.
 
 ## Instruments CSV (verified 2026-09-25 against the live file)
 

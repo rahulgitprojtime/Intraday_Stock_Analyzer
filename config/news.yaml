@@ -1,0 +1,57 @@
+# News check (M9, DECISIONS #19). Google News RSS headlines, classified by
+# deterministic headline-context rules. Real, linked items only: no
+# relevant item -> NO_RELEVANT_INFORMATION, never invented. Phrase lists are
+# illustrative and unvalidated (M10); extend them as misses show up.
+
+lookback_hours: 18
+refresh_minutes: 10          # each stock re-fetched about this often (staggered)
+max_age_minutes: 30          # older cached result -> "news unavailable"
+fetch_per_tick: 3            # stocks fetched per worker minute
+timeout_seconds: 10
+max_items_shown: 5
+subject_window_words: 8      # direction phrase must be this close to the stock's name
+
+# Names a headline must contain (whole words, case-insensitive) to be about
+# the stock. First alias is used in the search query too.
+aliases:
+  RELIANCE: [Reliance Industries, RIL, Reliance]
+  HDFCBANK: [HDFC Bank]
+  ICICIBANK: [ICICI Bank]
+  INFY: [Infosys]
+  TCS: [TCS, Tata Consultancy Services, Tata Consultancy]
+  SBIN: [State Bank of India, SBI]
+  AXISBANK: [Axis Bank]
+  KOTAKBANK: [Kotak Mahindra Bank, Kotak Bank, Kotak]
+  LT: [Larsen & Toubro, Larsen and Toubro, L&T]
+  ITC: [ITC]
+  BHARTIARTL: [Bharti Airtel, Airtel]
+  HINDUNILVR: [Hindustan Unilever, HUL]
+  BAJFINANCE: [Bajaj Finance]
+  MARUTI: [Maruti Suzuki, Maruti]
+  M&M: [Mahindra & Mahindra, Mahindra and Mahindra, M&M]
+  SUNPHARMA: [Sun Pharmaceutical, Sun Pharma]
+  TATASTEEL: [Tata Steel]
+  HCLTECH: [HCLTech, HCL Technologies, HCL Tech]
+  WIPRO: [Wipro]
+  NTPC: [NTPC]
+  POWERGRID: [Power Grid Corporation, Power Grid, POWERGRID]
+  ONGC: [ONGC, Oil and Natural Gas Corporation]
+  ADANIENT: [Adani Enterprises]
+  ULTRACEMCO: [UltraTech Cement, UltraTech]
+  TITAN: [Titan Company, Titan]
+
+# Quote/price-tracker pages are not news.
+skip_sources: [Upstox, Groww, HDFC Sky]      # seen as price pages 2026-09-28; extend as found
+skip_title_phrases: [share price live, stock price live, share price today, stock price today, live updates, live blog]
+
+# Headlines about many stocks are market roundups, not a catalyst for one.
+roundup_min_companies: 3
+roundup_phrases: [stocks to watch, stocks in focus, stock picks, top gainers, top losers, buzzing stocks, stocks to buy, trade setup, 52-week low, 52-week lows, 52-week high, 52-week highs, market live, sensex, nifty today]
+
+speculation_phrases: [should you, is it time, will it, can it, what next, here's why, explained]
+
+negations: [denies, deny, denied, refutes, rejects, dismisses, "no", not, without, clarifies]
+
+upward: [order win, wins order, bags order, secures order, bags contract, wins contract, bags deal, wins deal, signs deal, upgrade, upgrades, upgraded, raises target, target raised, hikes target, buy rating, overweight, outperform, beats estimates, beat estimates, profit rises, profit jumps, profit surges, profit up, net profit rises, revenue jumps, record high, all-time high, approval, approves, gets nod, receives nod, buyback, bonus issue, dividend, stake buy, raises stake, acquires, acquisition, expansion, capacity addition, launches, surge, surges, soars, rally, rallies, jump, jumps, gains]
+
+downward: [downgrade, downgrades, downgraded, cuts target, target cut, lowers target, sell rating, underweight, underperform, misses estimates, profit falls, profit drops, profit declines, net loss, loss widens, revenue falls, probe, raid, penalty, fined, fine of, ban, bans, resigns, resignation, fraud, default, pledge, stake sale, block deal, slump, slumps, plunge, plunges, tanks, crashes, falls, slides, declines, drops]

@@ -92,3 +92,12 @@ def test_build_prep_carries_liquidity_history():
     result = build_prep(_HistoryAdapter(candles), INST, date(2026, 9, 25))
     assert result.liquidity.sessions == 2
     assert result.liquidity.avg_daily_volume == 30
+
+
+def test_price_above_maximum_is_ineligible():
+    ts = datetime(2026, 9, 25, 9, 20)
+    f = FILTERS | {"min_price": 250.0, "max_price": 2500.0}
+    dear = evaluate_liquidity(LiquidityHistory(1e6, 1e10, 20), [bar(ts, 3000, 1)], f)
+    assert not dear.eligible and "price above maximum" in dear.reason
+    ok = evaluate_liquidity(LiquidityHistory(1e6, 1e10, 20), [bar(ts, 1000, 1)], f)
+    assert ok.eligible

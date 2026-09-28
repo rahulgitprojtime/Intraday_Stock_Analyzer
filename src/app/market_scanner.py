@@ -108,7 +108,7 @@ class MarketScanner:
         self.stats = {k: DailyStats(**v) for k, v in known.items() if v}
         f = self.filters
         self.pool = sorted(s for s, st in self.stats.items()
-                           if s in self.instruments and st.prev_close >= f.min_price
+                           if s in self.instruments and f.price_ok(st.prev_close)
                            and st.avg_volume >= f.min_avg_daily_volume
                            and st.avg_traded_value >= f.min_avg_traded_value)
         return errors

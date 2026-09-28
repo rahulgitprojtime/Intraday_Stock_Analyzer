@@ -148,3 +148,13 @@ def test_ranking_orders_by_prescore_not_volume_alone():
     ranked = rank_volume_change([strong, churn], st, FILTERS, at, CURVE)
     assert [c.symbol for c in ranked] == ["STRONG", "CHURN"]
     assert ranked[1].volume_change > ranked[0].volume_change              # churn had more volume
+
+
+def test_price_band_filters_the_ranking():
+    """User 2026-09-28: only stocks priced 250..2500."""
+    band = ScanFilters.from_config({"min_price": 250, "max_price": 2500, "min_avg_daily_volume": 500_000,
+                                    "min_avg_traded_value": 5e7})
+    stats = {s: daily_stats(s, daily(s, [(p, 1_000_000)] * 20), TODAY, 20)
+             for s, p in (("CHEAP", 200), ("MID", 1000), ("DEAR", 3000))}
+    quotes = [q("CHEAP", 2_000_000, 210), q("MID", 2_000_000, 1010), q("DEAR", 2_000_000, 3030)]
+    assert [c.symbol for c in rank_volume_change(quotes, stats, band, time(12, 22), CURVE)] == ["MID"]

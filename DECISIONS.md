@@ -399,3 +399,28 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   answered from data.
 - Strategy version 2026-09-29.m15. Research rows record the version; the
   historical replay made under m14 is not mixed with m15 results.
+
+### #26 — M16 whole-market history; price band 250..2500 (2026-09-28, user directive)
+- User: "limiting to these 25 stocks is a big mistake, we need to consider
+  the entire universe for intraday"; then "consider price >= 250 and <= 2500
+  for now, leave the rest".
+- Price band applies everywhere: live scan pool (previous close), each
+  minute's ranking (last price), and the engine's liquidity gate ("price
+  above maximum"). Other filters unchanged (avg volume ≥ 5 lakh, avg
+  traded value ≥ ₹5 cr). Live pool on 2026-09-28: 625 → 337 stocks.
+  Curated names outside the band now fail the gate in replays.
+- History (`scripts/fetch_universe_history.py`, data/universe_1y):
+  daily candles for all 1,643 NSE EQ intraday stocks → per-day pool from
+  the 20 prior sessions only (`pools.json`) → 1-min bars for every stock
+  ever in a pool + NIFTY, BANK NIFTY, sector indices. Paced 150 calls/min,
+  resumable, run outside market hours.
+- Replay (`worker --replay DIR --scan-universe`): `ReplayScanner` builds
+  each minute's quotes from bars closed by that minute and feeds the live
+  `rank_volume_change` → `ActiveSet` (top 50, 10-min stay) →
+  `DynamicUniverse` → engine. Same selection code as live.
+- Differences stated in reports: history knows every pool stock's volume
+  each minute (live quotes volume for the top 100 movers only); today's
+  instrument list (delisted stocks missing); sector map covers only the
+  curated names (sector group drops out for the rest, never 0).
+- Research rules of #24 unchanged; the whole-market results go to
+  data/research/universe, the 25-stock results stay for comparison.

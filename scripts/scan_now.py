@@ -52,8 +52,7 @@ def main(argv=None) -> int:
     f, scan = uni.get("filters", {}), uni.get("scan") or {}
     scanner = MarketScanner(
         adapter, master.scan_universe(),
-        ScanFilters(float(f["min_price"]), float(f["min_avg_daily_volume"]),
-                    float(f["min_avg_traded_value"]), bool(scan.get("long_only", True))),
+        ScanFilters.from_config(f, bool(scan.get("long_only", True))),
         ScannerConfig.from_dict(scan | {"top_n": a.top}), load_market_curve(),
         data_dir / "cache", data_dir / "scans")
     today = date.today()

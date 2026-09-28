@@ -285,8 +285,7 @@ def _dynamic_universe(adapter, master, scan_cfg: dict, data_dir: Path, feed, fee
     cfg = ScannerConfig.from_dict(scan_cfg)
     scanner = MarketScanner(
         adapter, master.scan_universe(),
-        ScanFilters(float(f.get("min_price", 0)), float(f.get("min_avg_daily_volume", 0)),
-                    float(f.get("min_avg_traded_value", 0)), bool(scan_cfg.get("long_only", True))),
+        ScanFilters.from_config(f, bool(scan_cfg.get("long_only", True))),
         cfg, load_market_curve(), data_dir / "cache", data_dir / "scans",
         ltp_source=lambda: _feed_prices(feed_store))
     return DynamicUniverse(scanner, ActiveSet(cfg.top_n, cfg.min_stay_minutes), master.resolve,
@@ -298,6 +297,31 @@ def _feed_prices(store) -> dict[str, float]:
     """Latest feed LTP per subscribed symbol; the scanner fetches the rest (M13)."""
     snap = store.snapshot(datetime.now())
     return {sym: st.ltp for sym, st in snap.symbols.items() if st.ltp is not None}
+
+
+def _replay_universe(root: Path, day: date):
+    """Whole-market replay (M16, DECISIONS #26): the day's liquid pool from
+    `<root>/pools.json` (built from prior sessions only), ranked each minute
+    from closed 1-min bars, same sticky top N as live."""
+    from src.app.dynamic_universe import DynamicUniverse
+    from src.app.market_scanner import ScannerConfig
+    from src.data.models import Exchange, Segment
+    from src.quantitative.volume_scan import ActiveSet, DailyStats, ScanFilters, load_market_curve
+    from src.research.universe_history import ReplayScanner
+    from src.storage.candle_cache import IntradayCandleCache
+
+    uni = load_universe()
+    scan_cfg = uni.get("scan") or {}
+    pools = json.loads((root / "pools.json").read_text(encoding="utf-8"))
+    stats = {s: DailyStats(**v) for s, v in (pools.get(day.isoformat()) or {}).items()}
+    cache = IntradayCandleCache(root)
+    inst = lambda s: Instrument(s, Exchange.NSE, Segment.CASH)
+    scanner = ReplayScanner(day, stats, lambda s: cache.load(inst(s), day),
+                            ScanFilters.from_config(uni.get("filters", {}),
+                                                    bool(scan_cfg.get("long_only", True))),
+                            load_market_curve())
+    cfg = ScannerConfig.from_dict(scan_cfg)
+    return DynamicUniverse(scanner, ActiveSet(cfg.top_n, cfg.min_stay_minutes), inst, day)
 
 
 def _news_service(symbols: list[str]):
@@ -331,7 +355,7 @@ def run_loop(ctx: WorkerContext, clock, out: Path, delay: float, ticks: int | No
     finally:
         if ctx.watchdog is not None:
             ctx.watchdog.feed.stop()
-        if ctx.universe is not None:
+        if ctx.universe is not None and hasattr(ctx.universe.scanner, "stop"):
             ctx.universe.scanner.stop()
 
 
@@ -343,6 +367,8 @@ def main(argv=None) -> int:
                    help="simulated minutes per real minute; 0 = no delay")
     p.add_argument("--ticks", type=int, default=None, help="stop after N ticks")
     p.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    p.add_argument("--scan-universe", action="store_true",
+                   help="replay: pick the top N each minute from the day's pool (needs <replay>/pools.json)")
     p.add_argument("--snapshots", type=Path, default=None,
                    help=f"record research snapshots here (live default {LIVE_SNAPSHOTS})")
     p.add_argument("--no-snapshots", action="store_true")
@@ -361,13 +387,15 @@ def main(argv=None) -> int:
         ctx.sector_indices = source.sector_indices()
         ctx.bank_index = next((i for i in ctx.sector_indices
                                if i.trading_symbol == "BANKNIFTY"), None)
+        if a.scan_universe:
+            ctx.stocks, ctx.universe = [], _replay_universe(a.replay, a.day)
         day, clock = a.day, replay_clock(a.day)
         delay = 60.0 / a.speed if a.speed > 0 else 0.0
     else:
         ctx = _live_context()
         day, clock, delay = date.today(), live_clock(), 0.0
     prepare(ctx, day)
-    if ctx.universe is not None:
+    if ctx.universe is not None and not a.replay:
         scanner = ctx.universe.scanner
         print(f"Volume scan: daily stats for {len(scanner.instruments)} stocks "
               "(cached per day; first run takes several minutes)...", flush=True)

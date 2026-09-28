@@ -87,3 +87,9 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [ ] Decide what to test on the validate split (one pre-stated change per run)
 - [ ] 2026-09-29 first live research day: check logs/worker_*.log at open, reports/live_2026-09-29.md after 15:45
 - [ ] After >= 20 live days: live report; proposed changes tested on validate then test split
+
+## M16 — Whole-market history + price band ✅ build (DECISIONS #26)
+- [x] Price band 250..2500 (scan pool, ranking, liquidity gate)
+- [x] Daily-candle store, per-day pools (prior sessions only), ReplayScanner, worker --scan-universe, downloader
+- [ ] Download data/universe_1y (running 2026-09-29 00:00), whole-market research replay, EXPLORE report
+- [ ] Sector map for scanned stocks (NSE index constituents)

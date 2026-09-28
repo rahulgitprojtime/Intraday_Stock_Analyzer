@@ -39,6 +39,17 @@ class ScanFilters:
     min_avg_daily_volume: float
     min_avg_traded_value: float
     long_only: bool = True
+    max_price: float | None = None       # user 2026-09-28: band 250..2500
+
+    @classmethod
+    def from_config(cls, filters: dict, long_only: bool = True) -> ScanFilters:
+        """From universe.yaml `filters` (+ `scan.long_only`)."""
+        return cls(float(filters.get("min_price", 0)), float(filters.get("min_avg_daily_volume", 0)),
+                   float(filters.get("min_avg_traded_value", 0)), long_only,
+                   float(filters["max_price"]) if filters.get("max_price") else None)
+
+    def price_ok(self, price: float) -> bool:
+        return price >= self.min_price and (self.max_price is None or price <= self.max_price)
 
 
 @dataclass(frozen=True)
@@ -138,7 +149,7 @@ def rank_volume_change(quotes: Sequence[dict], stats: dict, filters: ScanFilters
         st = stats.get(q["symbol"])
         if st is None or not st.avg_volume or not st.prev_close:
             continue
-        if (q["last_price"] < filters.min_price
+        if (not filters.price_ok(q["last_price"])
                 or st.avg_volume < filters.min_avg_daily_volume
                 or st.avg_traded_value < filters.min_avg_traded_value):
             continue

@@ -105,9 +105,13 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   snapshots; `scripts/label_outcomes.py`, `scripts/evaluate.py`,
   `scripts/research_replay.py`; Task Scheduler runs `scripts/live_day.ps1`
   weekdays 08:40 (worker) and 15:45 (label + reports/live_<day>.md).
+- **M15** (DECISIONS #25): news unweighted, setup 25%.
+- **M16** (DECISIONS #26): price band 250..2500; whole-market history
+  (`src/research/universe_history.py`, `scripts/fetch_universe_history.py`,
+  `worker --replay --scan-universe`).
 
 ### Tests
-409 passing (169 at the start of 2026-09-28) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+417 passing (169 at the start of 2026-09-28) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — unblocked 2026-09-27 (pandas 3.0.6, pyarrow 25.0.1, streamlit

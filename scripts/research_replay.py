@@ -5,9 +5,12 @@ records snapshots, labels outcomes from the same bars. Days already
 labeled are skipped, so it can be stopped and resumed.
 
     python scripts/research_replay.py --replay data/replay_1y --jobs 4
+    python scripts/research_replay.py --replay data/universe_1y --scan-universe \
+        --out data/research/universe --jobs 4          # whole market (M16)
 
-Caveat: the curated 25 large caps only (survivorship); no historical news,
-depth or ticks, so those questions stay live-only.
+Caveats: data/replay_1y is the curated 25 large caps only (survivorship);
+data/universe_1y is today's listed stocks (delisted ones missing). No
+historical news, depth or ticks, so those questions stay live-only.
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ from src.research.outcomes import label_file  # noqa: E402
 OUT = ROOT / "data" / "research" / "replay"
 
 
-def run_day(replay: Path, day: str, out: Path, panel: int) -> str:
+def run_day(replay: Path, day: str, out: Path, panel: int, scan: bool = False) -> str:
     labeled = out / "labeled" / f"{day}.jsonl"
     if labeled.exists():
         return f"{day} skip (done)"
@@ -35,7 +38,8 @@ def run_day(replay: Path, day: str, out: Path, panel: int) -> str:
     snaps.unlink(missing_ok=True)                 # a half-written day is redone, not appended
     r = subprocess.run([sys.executable, "-m", "src.app.worker", "--replay", str(replay),
                         "--day", day, "--speed", "0", "--out", str(out / "state" / f"{day}.json"),
-                        "--snapshots", str(out / "snapshots"), "--panel-minutes", str(panel)],
+                        "--snapshots", str(out / "snapshots"), "--panel-minutes", str(panel)]
+                       + (["--scan-universe"] if scan else []),
                        cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0 or not snaps.exists():
         return f"{day} FAIL worker: {(r.stderr or r.stdout).strip().splitlines()[-1:]}"
@@ -50,12 +54,14 @@ def main(argv=None) -> int:
     p.add_argument("--skip", type=int, default=20, help="first N days only feed the prep")
     p.add_argument("--panel-minutes", type=int, default=15)
     p.add_argument("--jobs", type=int, default=4)
+    p.add_argument("--scan-universe", action="store_true",
+                   help="whole-market replay: top N per minute from <replay>/pools.json (M16)")
     a = p.parse_args(argv)
     days = sorted(d.name for d in a.replay.iterdir() if d.is_dir() and d.name[:2] == "20")[a.skip:]
     print(f"{len(days)} days {days[0]}..{days[-1]} -> {a.out}", flush=True)
     fails = 0
     with ThreadPoolExecutor(a.jobs) as ex:
-        for msg in ex.map(lambda d: run_day(a.replay, d, a.out, a.panel_minutes), days):
+        for msg in ex.map(lambda d: run_day(a.replay, d, a.out, a.panel_minutes, a.scan_universe), days):
             fails += "FAIL" in msg
             print(msg, flush=True)
     print(f"done: {len(days) - fails}/{len(days)} days")

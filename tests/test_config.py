@@ -44,3 +44,9 @@ def test_universe_loads():
     universe = load_universe()
     assert "filters" in universe
     assert universe["filters"]["min_price"] > 0
+
+
+def test_universe_price_band_250_to_2500():
+    """User 2026-09-28: intraday universe limited to stocks priced 250..2500."""
+    f = load_universe()["filters"]
+    assert (f["min_price"], f["max_price"]) == (250.0, 2500.0)

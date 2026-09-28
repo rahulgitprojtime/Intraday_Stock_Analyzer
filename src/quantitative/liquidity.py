@@ -69,6 +69,9 @@ def evaluate_liquidity(
     min_price = filters.get("min_price")
     if min_price and bars and bars[-1].close < min_price:
         fails.append("price below minimum")
+    max_price = filters.get("max_price")
+    if max_price and bars and bars[-1].close > max_price:
+        fails.append("price above maximum")
     if history.avg_daily_volume < filters.get("min_avg_daily_volume", 0):
         fails.append("average daily volume below minimum")
     if history.avg_traded_value < filters.get("min_avg_traded_value", 0):

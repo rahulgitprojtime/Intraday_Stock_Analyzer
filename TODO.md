@@ -108,5 +108,8 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 ## Live ops — 2026-09-29 first live research day
 - [x] Worker (08:40 task) killed at ~09:12 with 0xC000013A (console close / Ctrl+C) — the PowerShell wrapper died too, so not a Python crash; cause unknown. Restarted 09:17:48. Feed errors (NATS "Error:" with empty message) logged just before.
 - [x] Task Scheduler: worker trigger repeats every 5 min 08:40-15:25 with IgnoreNew → relaunch within 5 min if it dies
-- [ ] Find the cause of the 09:12 kill (check Windows event log; watch for repeats)
+- [ ] Find the cause of the 0xC000013A kills (09:12 and 09:28, both right after a NATS feed disconnect "nats: unexpected EOF"); scheduler relaunched within ~1-2 min
+- [ ] Worker must survive network loss: 12:24 DNS failure (getaddrinfo) crashed it (exit 1) and every 5-min relaunch failed at authentication until 13:45 — retry auth/REST with backoff instead of exiting
+- [ ] 13:45 laptop hit critical battery and slept until 21:42: 15:45 label task missed (run manually 21:44: 6,365 rows, 6,199 labeled). Keep the laptop plugged in on market days
+- Day 1 recorded 09:20-12:24 only (with a 09:28-09:31 gap); strategy m16
 - [ ] AARTIPHARM prep failed on a truncated Groww JSON response — retry prep on JSON errors?

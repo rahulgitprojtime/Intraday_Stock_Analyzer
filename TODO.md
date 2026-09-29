@@ -113,3 +113,12 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [ ] 13:45 laptop hit critical battery and slept until 21:42: 15:45 label task missed (run manually 21:44: 6,365 rows, 6,199 labeled). Keep the laptop plugged in on market days
 - Day 1 recorded 09:20-12:24 only (with a 09:28-09:31 gap); strategy m16
 - [ ] AARTIPHARM prep failed on a truncated Groww JSON response — retry prep on JSON errors?
+
+## Paper trading + backtesting (DECISIONS #29) ✅ build, branch feature/paper-backtest-broker
+- [x] Broker interface; BacktestBroker + PaperBroker (simulated only); fills, Groww cost model, limits, 15:15 square-off
+- [x] SQLite ledger, TradingSession, Strategy base, performance metrics, backtest runner + cache/fetch-once
+- [x] ORB sample strategy; RecommendationStrategy replaces simulator.py; worker --paper; dashboard Paper trading page
+- [ ] First live `--paper` session: check tick fills, ledger growth, dashboard refresh
+- [ ] Restore open simulated positions after a worker restart (currently a new run starts)
+- [ ] Paper fills for symbols without live ticks (fall back to bars when a symbol has no feed)
+- [ ] Run paper_replay --all on data/replay_1y with the new broker (M10b baseline)

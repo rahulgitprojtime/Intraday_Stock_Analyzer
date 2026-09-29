@@ -337,8 +337,10 @@ def _news_service(symbols: list[str]):
 
 
 def run_loop(ctx: WorkerContext, clock, out: Path, delay: float, ticks: int | None,
-             recorder=None) -> None:
-    """Tick until the clock ends; the live feed is always stopped on exit."""
+             recorder=None, paper=None) -> None:
+    """Tick until the clock ends; the live feed is always stopped on exit.
+    `paper`: optional LivePaper simulation (DECISIONS #29), never places orders."""
+    as_of = None
     try:
         for n, as_of in enumerate(clock, 1):
             state = run_tick(ctx, as_of, datetime.now())
@@ -348,11 +350,21 @@ def run_loop(ctx: WorkerContext, clock, out: Path, delay: float, ticks: int | No
                     recorder.record(state)
                 except Exception as exc:        # research must never stop the worker
                     ctx.errors.append(f"snapshots: {type(exc).__name__}: {exc}")
+            if paper is not None:
+                try:
+                    paper.on_minute(ctx, as_of, state)
+                except Exception as exc:        # the simulation must never stop the worker
+                    ctx.errors.append(f"paper: {type(exc).__name__}: {exc}")
             if ticks and n >= ticks:
                 break
             if delay:
                 _time.sleep(delay)
     finally:
+        if paper is not None:
+            try:
+                paper.stop((as_of or datetime.now()).date())
+            except Exception as exc:
+                ctx.errors.append(f"paper: {type(exc).__name__}: {exc}")
         if ctx.watchdog is not None:
             ctx.watchdog.feed.stop()
         if ctx.universe is not None and hasattr(ctx.universe.scanner, "stop"):
@@ -373,6 +385,9 @@ def main(argv=None) -> int:
                    help=f"record research snapshots here (live default {LIVE_SNAPSHOTS})")
     p.add_argument("--no-snapshots", action="store_true")
     p.add_argument("--panel-minutes", type=int, default=5, help="snapshot every scored stock this often")
+    p.add_argument("--paper", action="store_true",
+                   help="live only: run the paper-trading simulation (config/paper.yaml); "
+                        "no order ever reaches Groww")
     a = p.parse_args(argv)
     if a.replay:
         if a.day is None:
@@ -412,7 +427,13 @@ def main(argv=None) -> int:
         from src.research.snapshots import SnapshotRecorder
         recorder = SnapshotRecorder(snap_dir, version_info() | {"source": ctx.source_name},
                                     a.panel_minutes)
-    run_loop(ctx, clock, a.out, delay, a.ticks, recorder)
+    paper = None
+    if not a.replay and (a.paper or load_yaml("paper.yaml").get("enabled")):
+        from src.app.paper_live import build_live_paper
+        paper = build_live_paper(ctx, day)     # replay days: scripts/paper_replay.py
+        paper.start()
+        print(f"Paper trading (SIMULATION): {paper.session.broker.run_id}", flush=True)
+    run_loop(ctx, clock, a.out, delay, a.ticks, recorder, paper)
     return 0
 
 

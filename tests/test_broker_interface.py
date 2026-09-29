@@ -45,15 +45,43 @@ def test_real_growwapi_sdk_is_detected_when_installed():
     assert groww.GROWWAPI_INSTALLED is True
 
 
-def test_paper_trading_cannot_reach_order_functionality():
-    """M10 (DECISIONS #20): the paper layer simulates positions on candles; it
-    must not import the broker/SDK or call anything order-like."""
+def test_simulated_trading_cannot_reach_groww():
+    """DECISIONS #20/#29: orders exist only inside the simulated brokers.
+    The simulation layer must not import the Groww adapter or SDK."""
     import re
     from pathlib import Path
 
-    for path in list(Path("src/paper").glob("*.py")) + [Path("scripts/paper_replay.py")]:
+    files = list(Path("src/paper").rglob("*.py")) + [Path("scripts/paper_replay.py"),
+                                                      Path("app/pages/1_Paper_trading.py")]
+    for path in files:
         src = path.read_text(encoding="utf-8")
         imports = re.findall(r"^\s*(?:from|import)\s+(\S+)", src, re.M)
         assert not [m for m in imports if m.startswith(("src.broker", "growwapi"))], path
-        calls = re.findall(r"\.(\w*order\w*)\s*\(", src, re.I)
+
+
+def test_no_code_calls_a_groww_order_endpoint():
+    """The Groww SDK has order endpoints (place/modify/cancel order, ...); no
+    file in the repo may call anything order-like on a Groww client."""
+    import re
+    from pathlib import Path
+
+    pattern = re.compile(r"(?:_client|api_client|groww\w*)\s*\.\s*\w*order\w*\s*\(", re.I)
+    for path in [*Path("src").rglob("*.py"), *Path("scripts").rglob("*.py"),
+                 *Path("app").rglob("*.py")]:
+        assert not pattern.findall(path.read_text(encoding="utf-8")), path
+    for path in Path("src/broker").rglob("*.py"):       # the only package that talks to Groww
+        calls = re.findall(r"\.(\w*order\w*)\s*\(", path.read_text(encoding="utf-8"), re.I)
         assert not calls, (path, calls)
+
+
+def test_every_order_broker_is_simulated():
+    """No live implementation of the order interface exists (DECISIONS #29)."""
+    from src.paper.broker import Broker, SimulatedBroker
+
+    def subclasses(cls):
+        for sub in cls.__subclasses__():
+            yield sub
+            yield from subclasses(sub)
+
+    impls = list(subclasses(Broker))
+    assert impls and all(issubclass(c, SimulatedBroker) for c in impls), impls

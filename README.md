@@ -3,8 +3,9 @@
 Live intraday **stock recommendation dashboard** for Indian cash equities,
 using the Groww Trading API as a market-data source. Ranks liquid intraday
 candidates by a blended, explainable Recommendation Score (quantitative +
-qualitative + market/sector context + liquidity). **It never places orders
-and the score is not a probability of profit.**
+qualitative + market/sector context + liquidity). **It never places real
+orders** (paper trading and backtests use a simulated broker only) **and
+the score is not a probability of profit.**
 
 **Scope: NSE/BSE cash equity, intraday, only.** F&O (derivatives) is
 explicitly out of scope — see `DECISIONS.md` #6.
@@ -66,6 +67,25 @@ Scalp microstructure.
 `--speed` is simulated minutes per real minute (`0` = as fast as
 possible). DEMO data is synthetic and is not strategy evidence.
 
+## Paper trading and backtests (simulation only)
+
+Strategies trade against an in-process simulated broker; nothing is ever
+sent to Groww (DECISIONS #29). Fills: next bar / next live tick plus
+slippage, limits only when traded through; Groww intraday charges from
+`config/costs.yaml`; square-off 15:15. Results land in SQLite ledgers
+under `data/paper/` and on the dashboard's **Paper trading** page.
+
+```bash
+# Backtest the sample Opening Range Breakout on cached 1-min candles
+python scripts/backtest.py --strategy orb --cache data/replay_1y --from 2026-06-01 --to 2026-09-25
+# ...downloading missing days once (read-only history, needs .env)
+python scripts/backtest.py --strategy orb --symbols RELIANCE INFY --from 2026-09-01 --to 2026-09-25 --cache data/replay_1y --fetch
+# Replay the recommendation engine as a strategy (journal + daily report + ledger)
+python scripts/paper_replay.py --replay data/replay --days 2026-09-25
+# Live paper trading during market hours (strategy from config/paper.yaml)
+python -m src.app.worker --paper
+```
+
 ## Configuration
 
 Sector confirmation (M8) uses `config/sectors.yaml`: sector → NSE index +
@@ -77,6 +97,9 @@ All tunable behavior lives in `config/*.yaml`, not in code:
 - `strategy.yaml` — M6 engine baseline weights, time heuristics, categories,
   in-play scanner, indicator params.
 - `universe.yaml` — symbol universe and liquidity filters.
+- `paper.yaml` — simulated broker (capital, limits, slippage, square-off),
+  paper strategy, recommendation entry policy, ORB parameters, ledgers.
+- `costs.yaml` — brokerage, STT, exchange, SEBI, IPFT, GST, stamp duty.
 
 ## Documentation map
 

@@ -109,9 +109,19 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
 - **M16** (DECISIONS #26): price band 250..2500; whole-market history
   (`src/research/universe_history.py`, `scripts/fetch_universe_history.py`,
   `worker --replay --scan-universe`).
+- **Paper trading + backtesting** (DECISIONS #29, branch
+  `feature/paper-backtest-broker`): `src/paper/` `Broker` interface with
+  simulated `BacktestBroker`/`PaperBroker` only (no live broker), fill
+  rules, Groww cost model (`config/costs.yaml`), long-only limits, 15:15
+  square-off, SQLite ledger, `TradingSession`, `Strategy` base,
+  performance (win rate, net after costs, max DD, Sharpe, equity curve),
+  ORB sample + `RecommendationStrategy` (replaced `simulator.py`),
+  `scripts/backtest.py` (cache + fetch-once), worker `--paper`,
+  dashboard page `app/pages/1_Paper_trading.py`. ORB on 83 cached days:
+  net -29% after costs (unoptimised sample).
 
 ### Tests
-417 passing (169 at the start of 2026-09-28) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+487 passing, 1 skipped (2026-09-29, paper/backtest branch; 417 before it) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — unblocked 2026-09-27 (pandas 3.0.6, pyarrow 25.0.1, streamlit

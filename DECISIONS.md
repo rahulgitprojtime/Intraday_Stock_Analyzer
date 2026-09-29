@@ -424,3 +424,25 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   curated names (sector group drops out for the rest, never 0).
 - Research rules of #24 unchanged; the whole-market results go to
   data/research/universe, the 25-stock results stay for comparison.
+
+### #27 — Validation tests of three explore hypotheses (2026-09-29, PRE-REGISTERED before running)
+- Data: data/research/universe (whole market, 250..2500, top 50/minute,
+  strategy m15), VALIDATE split 2026-07-01..2026-08-31 (44 days), panel
+  rows, metric = excess return vs NIFTY at 5/15/30/60 min. Each test runs
+  ONCE; the test split (Sep 2026) stays untouched.
+- T1 Less weight on extension. New blend of the recorded groups: volume
+  0.20→0.10, movement 0.15→0.075, momentum 0.15→0.075, the freed 0.25 to
+  setup (0.25→0.50); sector/market/liquidity unchanged (no tuning beyond
+  this halving rule). Compared with the m15 blend (`base_score`: before
+  time rules) on the same rows by within-day rank correlation (IC).
+  PASS = new-minus-old IC > 0 with paired day t > 2 at ≥ 2 horizons AND
+  the new IC not negative at 30 and 60 min.
+- T2 Lunch penalty. Same test as #24 Q8 (DAY, pre-penalty score ≥ 50,
+  11:30-13:30 vs 11:00-11:30 + 13:30-14:30). Remove the penalty unless the
+  verdict is "FINDING: worse" for lunch.
+- T3 Pullback-only list. DAY rows with EMA_PULLBACK or GAP_AND_GO
+  TRIGGERED vs all other DAY rows. PASS = "FINDING: better" under the #24
+  rule. Tradeable only if the mean return after the 0.1% cost is > 0 with
+  a 95% interval above 0 at 30 or 60 min (reported separately).
+- A pass here only makes a change a candidate: it is then checked once on
+  the test split, and any config change gets a new strategy version.

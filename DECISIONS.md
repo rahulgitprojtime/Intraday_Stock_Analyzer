@@ -461,3 +461,24 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   removed: strategy 2026-09-29.m16, lunch_penalty 0 (the rule is skipped
   when the penalty is 0). The September sample is thin; live data keeps
   checking it (Q8 in the live report).
+
+### #28 — Exploration round 2: what predicts CONTINUATION among the top-50 movers? (2026-09-29, PRE-REGISTERED)
+- Why: #27 showed the top-50 movers slightly mean-revert over 5-60 min and
+  no reweighting fixes it. Round 2 looks for conditions under which a
+  mover keeps going. EXPLORE split only (2025-11-12..2026-06-30), whole
+  market, DAY panel rows, metric and verdict rules of #24.
+- Q11 Time of day: 09:15-09:45, 09:45-10:30, 10:30-11:30, 11:30-13:30,
+  13:30-15:00; each window vs all other rows.
+- Q12 Distance above VWAP (raw %): < 0, 0-0.5, 0.5-1, 1-2, > 2; verdict
+  0-0.5 vs > 2 (near VWAP vs stretched).
+- Q13 RSI (5-min bars, DAY): < 50, 50-60, 60-70, 70-80, > 80; verdict
+  50-60 vs > 80.
+- Q14 ADX quintiles; verdict top vs bottom quintile.
+- Q15 Market direction (NIFTY % since open): < -0.5, -0.5..0, 0..0.5,
+  > 0.5; verdict > 0.5 vs < -0.5.
+- Q16 5-min ROC (raw %) quintiles; verdict top vs bottom quintile.
+- Each also reports the within-day rank correlation (IC) where the
+  feature is ordered. Findings here are hypotheses; any rule built from
+  them is pre-registered and tested once on validate, then test.
+- Not testable from recorded data (would need new snapshot fields): first
+  vs later breakout of the day, pullback depth from the day high.

@@ -99,3 +99,8 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
   setup (+0.01..0.04%). Sector, confluence, score bands, 2% move, lunch: no evidence. Nothing
   clears the 0.1% cost. Hypotheses only until the validate split.
 - [ ] Sector map for scanned stocks (NSE index constituents)
+
+## M17 — Validation tests (DECISIONS #27) ✅ run once 2026-09-29
+- [x] T1 reweight away from extension: FAIL (better, still negative IC); T2 lunch penalty: REMOVE; T3 pullback list: FAIL, not tradeable after cost
+- [ ] T2 on the test split (once), then strategy m16 without the lunch penalty if it holds
+- [ ] New explore hypotheses: the top-50 movers mean-revert; what predicts continuation? (explore split only)

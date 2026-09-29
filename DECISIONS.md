@@ -446,3 +446,10 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   a 95% interval above 0 at 30 or 60 min (reported separately).
 - A pass here only makes a change a candidate: it is then checked once on
   the test split, and any config change gets a new strategy version.
+- Results (run once, 2026-09-29, 44 days, 168k rows; reports/validate_m17.md):
+  T1 FAIL — the reweight improves the rank correlation consistently
+  (+0.004..0.006, paired t 2.0-3.3 at every DAY and SCALP horizon) but
+  the score still ranks negatively (DAY IC -0.013 at 30m, -0.006 at 60m).
+  T2 REMOVE penalty — lunch not worse (NO EVIDENCE). T3 FAIL — pullback
+  list +0.02-0.03% vs +0.006-0.012% at 15/30m but not stable across
+  halves; after the 0.1% cost -0.07..-0.10% (not tradeable).

@@ -37,7 +37,8 @@ TECH_WEIGHTS = {"setup": 0.20, "volume": 0.20, "movement": 0.15, "momentum": 0.1
 
 
 def load_rows(labeled_dir: Path, start: str | None = None, end: str | None = None,
-              version: str | None = None) -> list[dict]:
+              version: str | None = None, extra_prefixes: tuple[str, ...] = ()) -> list[dict]:
+    keep_prefix = _KEEP_PREFIX + tuple(extra_prefixes)
     rows = []
     for p in sorted(Path(labeled_dir).glob("*.jsonl")):
         if (start and p.stem < start) or (end and p.stem > end):
@@ -45,7 +46,7 @@ def load_rows(labeled_dir: Path, start: str | None = None, end: str | None = Non
         for line in p.read_text(encoding="utf-8").splitlines():
             r = json.loads(line)
             if r.get("trigger") == "panel" and (version is None or r.get("strategy_version") == version):
-                rows.append({k: v for k, v in r.items() if k in _KEEP or k.startswith(_KEEP_PREFIX)})
+                rows.append({k: v for k, v in r.items() if k in _KEEP or k.startswith(keep_prefix)})
     return rows
 
 

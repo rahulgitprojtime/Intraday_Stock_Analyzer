@@ -1,9 +1,9 @@
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from pathlib import Path
 
 import pytest
 
-from app.paper_view import live_view, open_ledger, run_options, run_report
+from app.paper_view import chart_points, live_view, open_ledger, run_options, run_report
 from src.paper.broker import BrokerConfig, PaperBroker
 from src.paper.costs import CostModel
 from src.paper.ledger import Ledger
@@ -35,6 +35,15 @@ def paper_db(tmp_path):
     b.persist_positions(datetime(2026, 9, 25, 10, 1))      # what the session does each minute
     db.commit()
     return db, b
+
+
+def test_chart_points_are_datetimes_thinned_and_keep_the_last_point():
+    start = datetime(2026, 9, 25, 9, 16)
+    curve = [((start + timedelta(minutes=i)).isoformat(), float(i)) for i in range(5000)]
+    pts = chart_points(curve, max_points=1000)
+    assert len(pts) <= 1001 and pts[-1]["equity"] == 4999.0
+    assert isinstance(pts[0]["at"], datetime)
+    assert chart_points([]) == []
 
 
 def test_missing_ledger_is_none(tmp_path):

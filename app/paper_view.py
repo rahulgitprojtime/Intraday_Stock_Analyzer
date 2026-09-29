@@ -3,6 +3,7 @@ the SQLite ledger; no Streamlit, no broker imports. SIMULATION ONLY."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from src.paper.ledger import Ledger
@@ -11,6 +12,17 @@ from src.paper.performance import performance
 DISCLAIMER = ("SIMULATION ONLY: orders go to an in-process simulated broker and nothing is "
               "sent to Groww. P&L is after modelled costs and slippage. Results are "
               "measurements, not probabilities of profit.")
+
+
+def chart_points(equity: list[tuple[str, float]], max_points: int = 1500) -> list[dict]:
+    """Equity curve for plotting: real datetimes (a time axis, not text
+    labels) and at most ~max_points points, always keeping the last one.
+    Metrics are computed on the full curve, not on this."""
+    step = max(1, -(-len(equity) // max_points))
+    keep = equity[::step]
+    if equity and keep[-1] is not equity[-1]:
+        keep.append(equity[-1])
+    return [{"at": datetime.fromisoformat(at), "equity": eq} for at, eq in keep]
 
 
 def open_ledger(path: str | Path) -> Ledger | None:
@@ -26,7 +38,7 @@ def run_report(ledger: Ledger, run: dict) -> dict:
     trades, daily = ledger.trades(rid), ledger.daily_pnl(rid)
     equity = ledger.equity_curve(rid)
     return {"metrics": performance(trades, equity, daily, run["starting_capital"]),
-            "equity": [{"at": at, "equity": eq} for at, eq in equity],
+            "equity": chart_points(equity),
             "daily": daily, "trades": trades}
 
 
@@ -52,5 +64,5 @@ def live_view(ledger: Ledger, run: dict) -> dict:
         "unrealized": round(sum(p["unrealized_pnl"] for p in positions), 2),
         "equity": equity[-1][1] if equity else run["starting_capital"],
         "as_of": equity[-1][0] if equity else None,
-        "equity_curve": [{"at": at, "equity": eq} for at, eq in equity],
+        "equity_curve": chart_points(equity),
     }

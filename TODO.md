@@ -122,3 +122,9 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [ ] Restore open simulated positions after a worker restart (currently a new run starts)
 - [ ] Paper fills for symbols without live ticks (fall back to bars when a symbol has no feed)
 - [ ] Run paper_replay --all on data/replay_1y with the new broker (M10b baseline)
+
+## Intraday playbook (DECISIONS #30) — branch feature/paper-backtest-broker
+- [x] Opening shortlist (turnover, |gap|, relative volume → top 15) + 5 long setups + article risk rules; backtest `--setups`; live paper `strategy: playbook`
+- [ ] Get INDIAVIX 1-min history into the cache so the ORB VIX filter is backtested
+- [ ] Sector momentum in the shortlist (needs sector map in the strategy context)
+- [ ] Backtest on the whole-market history (data/universe_1y) instead of the curated 25 (survivorship)

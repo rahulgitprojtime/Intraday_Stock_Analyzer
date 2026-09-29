@@ -119,9 +119,14 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   `scripts/backtest.py` (cache + fetch-once), worker `--paper`,
   dashboard page `app/pages/1_Paper_trading.py`. ORB on 83 cached days:
   net -29% after costs (unoptimised sample).
+- **Intraday playbook** (DECISIONS #30): opening shortlist (turnover,
+  |gap|, relative volume → top 15) + ORB / VWAP / EMA 5-15 rejection /
+  Bollinger reversal / PDL bounce (long only) with the article's risk
+  rules; `scripts/backtest.py --strategy playbook [--setups ...]`; live
+  paper `strategy: playbook`.
 
 ### Tests
-487 passing, 1 skipped (2026-09-29, paper/backtest branch; 417 before it) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+519 passing, 1 skipped (2026-09-29, paper/backtest branch; 417 before it) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — unblocked 2026-09-27 (pandas 3.0.6, pyarrow 25.0.1, streamlit

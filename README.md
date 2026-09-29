@@ -80,6 +80,9 @@ under `data/paper/` and on the dashboard's **Paper trading** page.
 python scripts/backtest.py --strategy orb --cache data/replay_1y --from 2026-06-01 --to 2026-09-25
 # ...downloading missing days once (read-only history, needs .env)
 python scripts/backtest.py --strategy orb --symbols RELIANCE INFY --from 2026-09-01 --to 2026-09-25 --cache data/replay_1y --fetch
+# Intraday playbook: opening shortlist + ORB / VWAP / EMA 5-15 / Bollinger / PDL setups
+python scripts/backtest.py --strategy playbook --cache data/replay_1y --from 2025-10-03 --to 2026-09-28
+python scripts/backtest.py --strategy playbook --setups VWAP --cache data/replay_1y --from 2025-10-03 --to 2026-09-28
 # Replay the recommendation engine as a strategy (journal + daily report + ledger)
 python scripts/paper_replay.py --replay data/replay --days 2026-09-25
 # Live paper trading during market hours (strategy from config/paper.yaml)

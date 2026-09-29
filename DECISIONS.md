@@ -523,3 +523,42 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   330 trades, win rate 29%, net -Rs 29,259 on Rs 1 lakh, charges Rs 18,023
   (about Rs 55 per round trip on ~Rs 25k positions: brokerage dominates).
   Unoptimised sample, not evidence for or against ORB.
+
+### #30 — Intraday playbook strategy from an external article (2026-09-29, user directive)
+- Source: dhanith.com "Best intraday trading strategies" (5 setups, an
+  opening screen, risk rules). Implemented as `IntradayPlaybook`
+  (`src/paper/strategies/playbook.py`) for backtests and paper trading on
+  the simulated broker. **Long side only** (#11); the article's short rules
+  are not implemented.
+- Shortlist = the article's screen made concrete (`src/paper/shortlist.py`):
+  at 09:30, liquidity floor Rs 2 cr turnover in 09:15-09:30, then average
+  percentile rank of window turnover, |gap %| and window volume vs the prior
+  session's window; top 15. Sector momentum not used (no rule in the source,
+  no sector map in the strategy context). Signals in the same minute are
+  taken in shortlist-rank order (replaces alphabetical order).
+- Vague rules made concrete (all in `paper.yaml playbook:`, untuned):
+  "above-average volume" = above today's earlier 5-min bars (ORB) or the
+  prior session's average 15-min bar (PDL); "rising volume" = above the
+  previous 5-min bar; "EMAs ~45 degrees" = EMA 5 and 15 each up >= 0.1% over
+  3 bars; "at PDL" = candle low within 0.3%; index filter = NIFTY above its
+  session average (index volume is 0, so mean typical price); VIX 12-18
+  applied only when INDIAVIX bars exist (not in the current cache).
+- Source rules kept as written: ORB stop at the first 15-min HIGH (failed-
+  breakout stop, not the range low); entries at the breakout close (market,
+  next bar) for ORB/VWAP, buy-stop above the signal candle for one bar for
+  EMA/BB/PDL; target 2R (PDL: PDH only if >= 2R; Bollinger middle/upper
+  band targets not used); 1% equity risk per trade, max 3 trades/day, stop
+  after 2 losses in a row, no entries before 09:30. Risk per share floored
+  at 0.15% of price; position value capped at Rs 25k.
+- Prior-session bars (PDL/PDH, EMA/Bollinger warm-up): backtests carry the
+  previous day; live paper reads it from the candle cache or one history
+  request per stock per day.
+- First backtest (curated 25 + NIFTY, 2025-10-03..2026-09-28, 243 days,
+  Rs 1 lakh, full cost model; exploratory, NOT pre-registered): every setup
+  loses after costs AND before costs. Net: ORB -38.8k (503 trades, 24% win),
+  VWAP -45.4k (623, 28%), EMA_REJECTION -33.5k (553, 27%; gross only -3.0k),
+  BB_REVERSAL -52.8k (650, 26%), PDL_BOUNCE -11.3k (139, 19%), all five
+  together -50.1k (696, 29%). Breakeven win rate at 2R is ~33% before
+  costs. The Rs 25k position cap binds before the 1% risk rule, so the
+  average risk is ~Rs 60-110 per trade while charges are ~Rs 55 per round
+  trip: at this size Groww's flat Rs 20/order dominates small intraday moves.

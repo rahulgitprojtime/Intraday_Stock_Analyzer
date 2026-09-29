@@ -30,10 +30,12 @@ user explicitly asks — prefer targeted diffs.
   `src/broker` directly — it consumes processed state).
 - **No score is a probability of profit** unless it has been statistically
   validated against walk-forward/out-of-sample data. Say so in the UI.
-- **Recommendation only — never trade.** No order placement/modification,
-  positions, holdings, paper/live trading, or order-style UI controls
-  (DECISIONS.md #8). Outputs are analytical categories (STRONG_CANDIDATE,
-  CANDIDATE, WATCH, NEUTRAL, AVOID), not instructions.
+- **Recommendation only — never trade.** No real order placement or
+  modification, no live broker, no order entry controls in the UI
+  (DECISIONS.md #8). Orders exist only inside the simulated brokers in
+  `src/paper/` (backtest + paper trading, DECISIONS #29), which must never
+  import `src/broker` or the SDK. Outputs are analytical categories
+  (STRONG_CANDIDATE, CANDIDATE, WATCH, NEUTRAL, AVOID), not instructions.
 - **No LLM for numbers.** Indicators and scores are deterministic Python.
   The LLM only structures *sourced* qualitative info; no source → 
   `NO_RELEVANT_INFORMATION`, never invented news.

@@ -482,3 +482,44 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   them is pre-registered and tested once on validate, then test.
 - Not testable from recorded data (would need new snapshot fields): first
   vs later breakout of the day, pullback depth from the day high.
+
+### #29 — Simulated broker for paper trading and backtesting (2026-09-29, user directive)
+- Narrows #8/#20 further, as the user chose: an order interface now exists
+  (`src/paper/broker.py` `Broker`: place_order, cancel_order, positions,
+  on_tick) but **only simulated implementations**: `BacktestBroker`
+  (historical 1-min bars) and `PaperBroker` (live Groww ticks). No live
+  broker, no stub for one. Guards (tests/test_broker_interface.py): the
+  market-data `BrokerAdapter` still has no order methods; `src/paper` and
+  the Paper trading page never import `src/broker`/`growwapi`; nothing in
+  the repo calls anything order-like on a Groww client; every `Broker`
+  subclass is a `SimulatedBroker`.
+- One engine: the M10a `simulator.py` was removed. The recommendation
+  policy is now `RecommendationStrategy` on the same broker (journal and
+  daily report unchanged); `ORB` is the sample standalone strategy. The
+  same strategy class runs in backtest and paper mode (`TradingSession`).
+- Fill rules: market → next bar open (backtest) or next live tick (paper)
+  + slippage; limit → only when price trades THROUGH it (touch is no fill),
+  at the limit or a better gap open, no slippage; stop → touch triggers,
+  fills at trigger or a worse gap open + slippage; stops are checked
+  before targets in a bar (ambiguity = stop). Bracket exits are checked on
+  the rest of the entry bar. Changes vs #20: targets now need a trade
+  through (was touch) and get no slippage; square-off 15:15 at the last
+  price (was 15:20); fixed 0.05% charges replaced by the cost model.
+- Costs (`config/costs.yaml`, groww.in/pricing checked 2026-09-29):
+  brokerage min(Rs 20, 0.1%) with Rs 5 floor per order, STT 0.025% sell,
+  stamp 0.003% buy, NSE txn 0.00297% (BSE 0.00375%), SEBI 0.0001%, NSE IPFT
+  0.0001%, GST 18% on brokerage + txn + SEBI + IPFT. No rupee rounding.
+- Intraday rules: long-only (sells only reduce), per-symbol position value
+  cap, max open positions (held + pending), cash incl. charges checked at
+  placement and at the fill; square-off 15:15 cancels orders, closes all,
+  blocks entries until the next day.
+- Ledger: SQLite (`data/paper/*.sqlite`, gitignored), rows keyed by run;
+  rerunning a backtest id replaces it; a live worker restart starts a new
+  run (in-memory positions are not restored — known limit).
+- Metrics: every round trip after costs; max drawdown on the minute equity
+  curve; Sharpe from daily equity returns x sqrt(252), rf = 0, NOT
+  AVAILABLE with < 2 days. Measurements, not probabilities of profit.
+- First real run (ORB, cached 25 stocks, 2026-06-01..09-25, 83 days):
+  330 trades, win rate 29%, net -Rs 29,259 on Rs 1 lakh, charges Rs 18,023
+  (about Rs 55 per round trip on ~Rs 25k positions: brokerage dominates).
+  Unoptimised sample, not evidence for or against ORB.

@@ -27,11 +27,15 @@ src/app/            worker: ReplaySource | LiveSource -> engine -> state.json
         v
 app/dashboard.py    Streamlit <- reads data/processed/state.json only
                     (app/view_model.py: stdlib, tested)
-src/paper/          M10 SIMULATION ONLY: ranked recommendations + closed bars
-                    -> entry policy -> virtual position (next-bar-open fill,
-                    fixed stop/target) -> append-only journal -> reports.
-                    Driven by the same worker tick (scripts/paper_replay.py);
-                    never imports src/broker (DECISIONS #20)
+src/paper/          SIMULATION ONLY (DECISIONS #20, #29): Strategy -> Broker
+                    interface -> SimulatedBroker (fills.py rules, costs.py,
+                    limits, 15:15 square-off) -> SQLite ledger.
+                    BacktestBroker (cached bars, backtest.py) | PaperBroker
+                    (live ticks, src/app/paper_live.py in the worker).
+                    TradingSession drives either on a minute clock.
+                    strategies/: orb.py, recommendation.py (M10 journal).
+                    Never imports src/broker (tested)
+app/pages/          Paper trading page <- reads data/paper/*.sqlite only
 ```
 
 Runtime split: a **live data worker** process owns the Groww feed and REST
@@ -43,8 +47,9 @@ polling and writes feature/recommendation state; Streamlit only reads it.
 - Streamlit never holds the feed connection or calls broker methods.
 - No LLM computes any number; Python does all indicator/score math.
 - Stale critical data => the stock is not recommended.
-- `src/paper/` must not reimplement indicator/scoring logic, never sees a
-  bar after the current tick, and has no order functionality (tested).
+- `src/paper/` must not reimplement indicator/scoring logic and never sees
+  a bar after the current tick. Its orders only ever reach a simulated
+  broker; every `Broker` implementation is simulated (tested).
 
 ## Config
 

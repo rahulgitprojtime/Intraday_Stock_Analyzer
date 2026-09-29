@@ -5,7 +5,7 @@
 # Identifies the recommendation methodology in paper-trade journals (M10).
 # Bump on any change to scoring, setups, gates, sector or news rules, so
 # results from different versions are never mixed (DECISIONS #20).
-strategy_version: "2026-09-29.m15"
+strategy_version: "2026-09-29.m16"
 
 # M6 baseline quantitative scoring model (DECISIONS #14). Temporary
 # engineering defaults, NOT claimed optimal; M10 validates. Weights exist
@@ -35,7 +35,7 @@ engine:
     opening_cap_until: "09:20"   # cap at WATCH before this
     lunch_start: "11:30"
     lunch_end: "13:30"
-    lunch_penalty: 10
+    lunch_penalty: 0             # was 10; removed by DECISIONS #27 (lunch not worse)
     day_cap_after: "14:45"       # DAY mode capped at WATCH
     close_cap_after: "15:00"     # all modes capped at NEUTRAL
 

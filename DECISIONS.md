@@ -453,3 +453,11 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   T2 REMOVE penalty — lunch not worse (NO EVIDENCE). T3 FAIL — pullback
   list +0.02-0.03% vs +0.006-0.012% at 15/30m but not stable across
   halves; after the 0.1% cost -0.07..-0.10% (not tradeable).
+- T2 on the TEST split (run once, 2026-09-29; reports/test_t2_m17.md):
+  19 days → INSUFFICIENT under the 20-day rule, but lunch ≥ neighbouring
+  hours at every horizon (+0.005/+0.008/+0.015/+0.037% vs
+  +0.000/+0.003/+0.009/+0.035%), same direction as validation. Per the
+  pre-registered rule (remove unless lunch is worse) the penalty is
+  removed: strategy 2026-09-29.m16, lunch_penalty 0 (the rule is skipped
+  when the penalty is 0). The September sample is thin; live data keeps
+  checking it (Q8 in the live report).

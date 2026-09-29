@@ -110,7 +110,7 @@ def apply_time_rules(
 ) -> tuple[float, list[Adjustment]]:
     """Initial time-of-day heuristics (unvalidated until M10)."""
     adj: list[Adjustment] = []
-    if cfg.lunch_start <= t < cfg.lunch_end:
+    if cfg.lunch_penalty > 0 and cfg.lunch_start <= t < cfg.lunch_end:
         score -= cfg.lunch_penalty
         adj.append(Adjustment("lunch_lull", "penalty", -cfg.lunch_penalty,
                               "Lunch-hour penalty (initial time-of-day heuristic, unvalidated)"))

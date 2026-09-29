@@ -100,10 +100,18 @@ def test_midmorning_unchanged():
     assert apply_time_rules(90, "DAY", time(10, 0), CFG) == (90, [])
 
 
-def test_lunch_penalty_and_clip():
-    score, adj = apply_time_rules(90, "SCALP", time(12, 0), CFG)
+def test_lunch_penalty_mechanism_and_clip():
+    from dataclasses import replace
+    cfg = replace(CFG, lunch_penalty=10.0)
+    score, adj = apply_time_rules(90, "SCALP", time(12, 0), cfg)
     assert score == 80 and adj[0].kind == "penalty" and adj[0].points == -10
-    assert apply_time_rules(5, "SCALP", time(12, 0), CFG)[0] == 0
+    assert apply_time_rules(5, "SCALP", time(12, 0), cfg)[0] == 0
+
+
+def test_no_lunch_penalty_in_config():
+    """DECISIONS #27: lunch not worse (validate; test split same direction) -> removed (m16)."""
+    assert CFG.lunch_penalty == 0
+    assert apply_time_rules(90, "SCALP", time(12, 0), CFG) == (90, [])
 
 
 def test_caps():
@@ -116,7 +124,7 @@ def test_caps():
 
 
 def test_heuristic_reasons_say_unvalidated():
-    _, adj = apply_time_rules(90, "DAY", time(12, 0), CFG)
+    _, adj = apply_time_rules(90, "DAY", time(9, 17), CFG)          # opening cap
     assert "heuristic" in adj[0].reason
 
 

@@ -206,10 +206,10 @@ def test_avoid_reasons_are_the_hard_quality_gates():
     assert avoid_reasons(trig, "AVOID") == ("score below NEUTRAL floor",)
 
 
-def test_soft_penalty_stays_rankable():
+def test_lunch_has_no_penalty():
     lunch = T0 + timedelta(minutes=165)                    # 12:00
     rec = evaluate(trend_bars(n=165), as_of=lunch).recommendations["SCALP"]
-    assert any(a.name == "lunch_lull" and a.kind == "penalty" for a in rec.adjustments)
+    assert not any(a.name == "lunch_lull" for a in rec.adjustments)
     assert rec.eligible_for_top_n is True and rec.category != "AVOID"
 
 

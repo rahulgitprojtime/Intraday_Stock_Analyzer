@@ -104,3 +104,9 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [x] T1 reweight away from extension: FAIL (better, still negative IC); T2 lunch penalty: REMOVE; T3 pullback list: FAIL, not tradeable after cost
 - [ ] T2 on the test split (once), then strategy m16 without the lunch penalty if it holds
 - [ ] New explore hypotheses: the top-50 movers mean-revert; what predicts continuation? (explore split only)
+
+## Live ops — 2026-09-29 first live research day
+- [x] Worker (08:40 task) killed at ~09:12 with 0xC000013A (console close / Ctrl+C) — the PowerShell wrapper died too, so not a Python crash; cause unknown. Restarted 09:17:48. Feed errors (NATS "Error:" with empty message) logged just before.
+- [x] Task Scheduler: worker trigger repeats every 5 min 08:40-15:25 with IgnoreNew → relaunch within 5 min if it dies
+- [ ] Find the cause of the 09:12 kill (check Windows event log; watch for repeats)
+- [ ] AARTIPHARM prep failed on a truncated Groww JSON response — retry prep on JSON errors?

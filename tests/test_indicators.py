@@ -5,6 +5,7 @@ import pytest
 from src.data.models import Candle, Exchange, Instrument, Segment
 from src.indicators.core import (
     adx,
+    bollinger,
     atr,
     ema,
     macd,
@@ -119,3 +120,17 @@ def test_rvol_time_of_day_uses_cumulative_curve():
 def test_rvol_time_of_day_none_without_curve_or_bars():
     assert rvol_time_of_day([], [1.0] * 375) is None
     assert rvol_time_of_day([bar(0, 1, 1, 1, 1)], []) is None
+
+
+def test_bollinger_mid_is_sma_bands_use_population_std():
+    closes = [1.0, 2, 3, 4, 5]
+    mid, upper, lower = bollinger(closes, period=5, k=1.5)
+    assert mid[:4] == [None] * 4 and upper[3] is None
+    std = 2 ** 0.5                                     # population std of 1..5
+    assert mid[4] == 3.0
+    assert upper[4] == pytest.approx(3 + 1.5 * std) and lower[4] == pytest.approx(3 - 1.5 * std)
+
+
+def test_bollinger_rolls_over_the_last_period_values():
+    mid, _, _ = bollinger([10.0, 10, 10, 20], period=3, k=2)
+    assert mid == [None, None, 10.0, pytest.approx(40 / 3)]

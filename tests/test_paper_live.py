@@ -81,3 +81,23 @@ def test_a_restart_starts_a_new_run_and_keeps_the_old_one(tmp_path):
     build_live_paper(ctx, DAY, raw(tmp_path, strategy="orb"), now=at(9, 0)).stop(DAY)
     build_live_paper(ctx, DAY, raw(tmp_path, strategy="orb"), now=at(9, 40)).stop(DAY)
     assert len(Ledger(tmp_path / "paper.sqlite").runs()) == 2
+
+
+def test_playbook_live_paper_loads_the_prior_session_once(tmp_path):
+    ctx = ctx_with_bars(tmp_path)
+    prev = date(2026, 9, 24)
+    ctx.source.cache.save(AAA, prev, [Candle(AAA, 1, datetime.combine(prev, time(9, 15)),
+                                             90, 95, 85, 92, 1000)])
+    calls = []
+    ctx.source.adapter = SimpleNamespace(get_historical_candles=lambda r: calls.append(r) or [])
+    pb = load_yaml("paper.yaml")["playbook"]
+    cfg = raw(tmp_path, strategy="playbook",
+              playbook=pb | {"shortlist": pb["shortlist"] | {"min_turnover": 0}})
+    live = build_live_paper(ctx, DAY, cfg, now=at(9, 0))
+    live.on_minute(ctx, at(9, 31), {})
+    live.on_minute(ctx, at(9, 32), {})
+    prior = live.session.ctx.prior_bars("AAA")
+    assert [(b.low, b.high) for b in prior] == [(85, 95)]
+    assert len(calls) == 1                     # one request fills the other missing weekdays
+    assert live.session.strategy.shortlist     # the opening screen ran at 09:30+
+    live.stop(DAY)

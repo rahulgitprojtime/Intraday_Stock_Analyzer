@@ -4,7 +4,7 @@
 # starting values to be *evaluated*, not optimised.
 
 enabled: false                # live paper session in the worker (also: worker --paper)
-strategy: recommendation      # live paper strategy: recommendation | orb
+strategy: recommendation      # live paper strategy: recommendation | orb | playbook
 mode: DAY                     # which recommendation list feeds entries (SCALP | DAY)
 quantity: 10                  # recommendation strategy: fixed shares per trade
 
@@ -44,3 +44,33 @@ orb:                          # sample Opening Range Breakout (src/paper/strateg
   max_position_value: 25000
   max_range_pct: 3.0          # skip days whose opening range is wider
   last_entry: "14:30"
+
+playbook:                     # src/paper/strategies/playbook.py (DECISIONS #30), long side only
+  # Source: dhanith.com "Best intraday trading strategies"; vague rules made
+  # concrete here. Starting values, NOT tuned or validated.
+  setups: [ORB, VWAP, EMA_REJECTION, BB_REVERSAL, PDL_BOUNCE]   # checked in this order
+  risk_pct: 1.0               # of equity per trade
+  min_rr: 2.0                 # target = 2 x risk (PDL_BOUNCE: PDH, only if >= 2R)
+  max_trades_per_day: 3
+  max_consecutive_losses: 2   # then no more entries today
+  no_entry_before: "09:30"    # 09:15-09:30 is observation only
+  last_entry: "14:30"
+  max_position_value: 25000
+  min_risk_pct: 0.15          # floor on risk per share (% of price)
+  orb_max_range_pct: 2.0      # skip wide opening ranges (gap days)
+  vix_min: 12.0               # ORB only, when INDIAVIX bars are available
+  vix_max: 18.0
+  vwap_stop_buffer_pct: 0.2   # stop below VWAP
+  ema_fast: 5
+  ema_slow: 15
+  ema_slope_bars: 3           # "EMAs sloping ~45 degrees" = both up >= 0.1% over 3 bars
+  ema_min_slope_pct: 0.1
+  bb_period: 20
+  bb_k: 1.5
+  level_near_pct: 0.3         # "at PDL" = candle low within 0.3% of it
+  index_symbol: NIFTY
+  vix_symbol: INDIAVIX
+  shortlist:                  # the opening screen: turnover, |gap %|, relative volume
+    top_n: 15
+    window_minutes: 15
+    min_turnover: 20000000    # Rs 2 crore in the first 15 minutes

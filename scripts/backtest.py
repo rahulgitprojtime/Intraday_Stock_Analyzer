@@ -28,11 +28,16 @@ from src.paper.broker import BrokerConfig  # noqa: E402
 from src.paper.costs import CostModel  # noqa: E402
 from src.paper.ledger import Ledger  # noqa: E402
 from src.paper.strategies.orb import OpeningRangeBreakout  # noqa: E402
+from src.paper.strategies.playbook import IntradayPlaybook, PlaybookConfig  # noqa: E402
 from src.storage.candle_cache import IntradayCandleCache  # noqa: E402
 from src.utils.config import load_universe, load_yaml  # noqa: E402
 
-STRATEGIES = {"orb": lambda raw, symbols: OpeningRangeBreakout.from_dict(
-    raw["orb"] | ({"symbols": symbols} if symbols else {}))}
+STRATEGIES = {
+    "orb": lambda raw, a: OpeningRangeBreakout.from_dict(
+        raw["orb"] | ({"symbols": a.symbols} if a.symbols else {})),
+    "playbook": lambda raw, a: IntradayPlaybook(PlaybookConfig.from_dict(
+        raw["playbook"] | ({"setups": a.setups} if a.setups else {}))),
+}
 
 
 def index_names() -> set[str]:
@@ -43,11 +48,13 @@ def index_names() -> set[str]:
 
 
 def day_symbols(cache: IntradayCandleCache, day: date, symbols: list[str] | None,
-                skip: set[str]) -> list[str]:
-    if symbols:
-        return symbols
+                skip: set[str], context: tuple = ()) -> list[str]:
+    """Tradable stocks for the day plus the strategy's context symbols
+    (e.g. NIFTY, INDIAVIX) when the cache has them."""
     folder = cache.root / day.isoformat()
-    return sorted(p.stem for p in folder.glob("*.csv") if p.stem.upper() not in skip)
+    names = symbols or sorted(p.stem for p in folder.glob("*.csv") if p.stem.upper() not in skip)
+    return list(names) + [s for s in context if (folder / f"{s}.csv").exists()
+                          and s not in names]
 
 
 def fetch_missing(cache: IntradayCandleCache, symbols: list[str], days: list[date]) -> None:
@@ -80,6 +87,8 @@ def main(argv=None) -> int:
     p.add_argument("--cache", type=Path, default=Path("data/replay_1y"))
     p.add_argument("--symbols", nargs="*", default=None, help="default: every stock in the cache")
     p.add_argument("--fetch", action="store_true", help="download missing days (needs --symbols)")
+    p.add_argument("--setups", nargs="*", default=None,
+                   help="playbook only: e.g. ORB VWAP (default paper.yaml playbook.setups)")
     p.add_argument("--ledger", type=Path, default=None)
     p.add_argument("--run-id", default=None)
     a = p.parse_args(argv)
@@ -87,15 +96,19 @@ def main(argv=None) -> int:
         p.error("--fetch needs --symbols")
     raw = load_yaml("paper.yaml")
     cfg, costs = BrokerConfig.from_dict(raw["broker"]), CostModel.from_dict(load_yaml("costs.yaml"))
-    strategy = STRATEGIES[a.strategy](raw, a.symbols)
+    strategy = STRATEGIES[a.strategy](raw, a)
     cache = IntradayCandleCache(a.cache)
     days = weekdays(a.start, a.end)
     if a.fetch:
-        fetch_missing(cache, a.symbols, days)
+        fetch_missing(cache, a.symbols + [s for s in strategy.context_symbols
+                                          if s not in a.symbols], days)
     skip = index_names()
-    run_id = a.run_id or f"{strategy.name}:{a.start}..{a.end}"
+    run_id = a.run_id or f"{strategy.name}:{a.start}..{a.end}" + (
+        f":{'+'.join(a.setups)}" if a.setups else "")
     ledger = Ledger(a.ledger or raw["backtest_ledger"])
-    res = run_backtest(strategy, ((d, load_day(cache, day_symbols(cache, d, a.symbols, skip), d))
+    ctx_syms = tuple(strategy.context_symbols)
+    res = run_backtest(strategy, ((d, load_day(cache, day_symbols(cache, d, a.symbols, skip,
+                                                                  ctx_syms), d))
                                   for d in days), cfg, costs, ledger=ledger, run_id=run_id)
     ledger.close()
     print(f"\nBACKTEST {run_id}  (SIMULATION ONLY - no orders were placed)")

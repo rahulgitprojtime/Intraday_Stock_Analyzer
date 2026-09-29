@@ -20,10 +20,22 @@ class StrategyContext:
         self.as_of: datetime | None = None
         self.day: date | None = None
         self._history: dict[str, list[Bar]] = {}
+        self._prior: dict[str, list[Bar]] = {}
 
     def bars(self, symbol: str) -> list[Bar]:
         """Today's closed bars for `symbol`, oldest first (a copy)."""
         return list(self._history.get(symbol, ()))
+
+    def new_bars(self, symbol: str, seen: int) -> list[Bar]:
+        """Today's closed bars after the first `seen` (cheap incremental read)."""
+        return self._history.get(symbol, [])[seen:]
+
+    def prior_bars(self, symbol: str) -> list[Bar]:
+        """The previous session's 1-min bars (empty if unknown)."""
+        return list(self._prior.get(symbol, ()))
+
+    def set_prior(self, symbol: str, bars: list[Bar]) -> None:
+        self._prior[symbol] = list(bars)
 
     def symbols(self) -> list[str]:
         return sorted(self._history)
@@ -32,6 +44,9 @@ class StrategyContext:
         return self.broker.positions().get(symbol)
 
     def _reset(self, day: date) -> None:
+        """New session: today's history becomes the prior session."""
+        if self._history:
+            self._prior = self._history
         self.day, self.as_of, self._history = day, None, {}
 
     def _append(self, bar: Bar) -> None:
@@ -40,6 +55,8 @@ class StrategyContext:
 
 class Strategy(ABC):
     name = "STRATEGY"
+    needs_prior = False           # True: wants the previous session's bars (ctx.prior_bars)
+    context_symbols: tuple = ()   # loaded for context (e.g. NIFTY), never traded
 
     def params(self) -> dict:
         return {}

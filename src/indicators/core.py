@@ -160,3 +160,18 @@ def rvol_time_of_day(today: Sequence[Candle], avg_curve: Sequence[float]) -> flo
     if not 0 <= i < SESSION_MINUTES or not avg_curve[i]:
         return None
     return sum(c.volume for c in today) / avg_curve[i]
+
+
+def bollinger(values: Sequence[float], period: int = 20, k: float = 2.0
+              ) -> tuple[Series, Series, Series]:
+    """(middle = SMA, upper, lower) with the population standard deviation
+    of the last `period` values, as charting platforms compute it."""
+    mid: Series = [None] * len(values)
+    upper: Series = [None] * len(values)
+    lower: Series = [None] * len(values)
+    for i in range(period - 1, len(values)):
+        w = values[i - period + 1:i + 1]
+        m = sum(w) / period
+        sd = (sum((x - m) ** 2 for x in w) / period) ** 0.5
+        mid[i], upper[i], lower[i] = m, m + k * sd, m - k * sd
+    return mid, upper, lower

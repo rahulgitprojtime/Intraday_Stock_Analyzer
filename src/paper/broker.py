@@ -72,6 +72,10 @@ class Broker(ABC):
     @abstractmethod
     def on_tick(self, event) -> list[Fill]: ...
 
+    @abstractmethod
+    def equity(self) -> float:
+        """Cash plus open positions at their latest price."""
+
 
 class SimulatedBroker(Broker):
     mode = "SIMULATED"

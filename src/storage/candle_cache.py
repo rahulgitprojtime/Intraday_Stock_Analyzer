@@ -21,11 +21,11 @@ class IntradayCandleCache:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
 
-    def _path(self, instrument: Instrument, day: date) -> Path:
+    def path(self, instrument: Instrument, day: date) -> Path:
         return self.root / day.isoformat() / f"{instrument.trading_symbol}.csv"
 
     def load(self, instrument: Instrument, day: date) -> list[Candle]:
-        path = self._path(instrument, day)
+        path = self.path(instrument, day)
         if not path.exists():
             return []
         with path.open(newline="", encoding="utf-8") as f:
@@ -45,7 +45,7 @@ class IntradayCandleCache:
             ]
 
     def save(self, instrument: Instrument, day: date, candles: list[Candle]) -> None:
-        path = self._path(instrument, day)
+        path = self.path(instrument, day)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         with tmp.open("w", newline="", encoding="utf-8") as f:

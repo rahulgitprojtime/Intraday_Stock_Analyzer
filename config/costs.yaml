@@ -1,0 +1,20 @@
+# Transaction costs for simulated fills (DECISIONS #29). Equity INTRADAY
+# (MIS) rates from https://groww.in/pricing, checked 2026-09-29. Re-check
+# there before relying on results; rates change with exchange/SEBI circulars.
+# Percentages are % of the fill's turnover (qty x price).
+
+brokerage:
+  flat_per_order: 20.0        # Rs 20 per executed order ...
+  pct: 0.1                    # ... or 0.1%, whichever is lower
+  min_per_order: 5.0          # minimum Rs 5 per executed order
+
+stt_sell_pct: 0.025           # intraday: sell side only
+stamp_duty_buy_pct: 0.003     # buy side only
+exchange_txn_pct:             # both sides
+  NSE: 0.00297
+  BSE: 0.00375
+sebi_fee_pct: 0.0001          # Rs 10 per crore, both sides
+ipft_pct:                     # investor protection fund, both sides
+  NSE: 0.0001
+  BSE: 0.0
+gst_pct: 18.0                 # on brokerage + exchange txn + SEBI fee + IPFT

@@ -124,9 +124,16 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   Bollinger reversal / PDL bounce (long only) with the article's risk
   rules; `scripts/backtest.py --strategy playbook [--setups ...]`; live
   paper `strategy: playbook`.
+- **Whole-market setup study, long + short** (DECISIONS #31, pre-registered):
+  `src/research/setup_backtest.py` + `scripts/setup_study.py` — ORB / VWAP /
+  EMA 5-15 / Bollinger / previous-day level, both sides via price mirroring,
+  candle confirmation, 10/30-min + daily trend agreement (MTF), exits
+  NATIVE / +1 / +2 / +5 / +10%. Explore (161 sessions, 110k stock-days,
+  1.09 M signals): 0 of 100 variants pass after Groww charges; the raw
+  edge before costs is ~0. Validate/test not run.
 
 ### Tests
-519 passing, 1 skipped (2026-09-29, paper/backtest branch; 417 before it) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+542 passing, 1 skipped (2026-09-30, paper/backtest branch; 417 before it) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — unblocked 2026-09-27 (pandas 3.0.6, pyarrow 25.0.1, streamlit

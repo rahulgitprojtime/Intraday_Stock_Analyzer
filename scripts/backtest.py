@@ -1,6 +1,6 @@
 """Backtest a strategy on cached 1-min candles (DECISIONS #29). SIMULATION ONLY.
 
-    python scripts/backtest.py --strategy orb --cache data/replay_1y --from 2026-06-01 --to 2026-09-25
+    python scripts/backtest.py --strategy orb --cache data/universe_1y --from 2026-06-01 --to 2026-09-25
     python scripts/backtest.py --strategy orb --symbols RELIANCE INFY --from 2026-09-01 --to 2026-09-25 --fetch
 
 Candles are read from `<cache>/<day>/<SYMBOL>.csv` (the layout
@@ -84,7 +84,7 @@ def main(argv=None) -> int:
     p.add_argument("--strategy", choices=sorted(STRATEGIES), default="orb")
     p.add_argument("--from", dest="start", type=date.fromisoformat, required=True)
     p.add_argument("--to", dest="end", type=date.fromisoformat, required=True)
-    p.add_argument("--cache", type=Path, default=Path("data/replay_1y"))
+    p.add_argument("--cache", type=Path, default=Path("data/universe_1y"))
     p.add_argument("--symbols", nargs="*", default=None, help="default: every stock in the cache")
     p.add_argument("--fetch", action="store_true", help="download missing days (needs --symbols)")
     p.add_argument("--setups", nargs="*", default=None,

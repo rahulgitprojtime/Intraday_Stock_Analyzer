@@ -562,3 +562,100 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   costs. The Rs 25k position cap binds before the 1% risk rule, so the
   average risk is ~Rs 60-110 per trade while charges are ~Rs 55 per round
   trip: at this size Groww's flat Rs 20/order dominates small intraday moves.
+
+### #31 — Whole-market setup study, long AND short (2026-09-30, user directive; PRE-REGISTERED before any run)
+- User rules (2026-09-29/30): analyse the whole market, never a handpicked
+  list, and do not cap the candidates; every entry needs a confirmed live
+  candle pattern; exits focus on 5-10% profit on the investment; Groww's
+  charges are fixed (it is the user's broker); trade falling and sideways
+  markets too, not only rising ones. This study therefore trades BOTH
+  sides; #11 (long-only) still governs the live recommendation dashboard.
+- Evidence behind the rules: `docs/research/intraday_setup_evidence.md`.
+- Engine: `src/research/setup_backtest.py` (stdlib, simulation only). Per
+  stock-day, the FIRST signal of each setup x side; every trade Rs 25,000
+  (qty = floor(25,000 / signal close)); fills as #29: market entry at the
+  next 1-min open +/- 5 bps, stop = stop-market (touch, gap fills at the
+  open, 5 bps), target = limit (trade-through only, no slippage), stop
+  assumed first when both touch in one bar, square-off at 15:15 at the last
+  close +/- 5 bps; Groww charges per order (a short pays STT on its first,
+  selling order and stamp duty on the covering buy).
+- Data: `data/universe_1y`, every stock with 1-min bars that day (~730: the
+  store holds stocks that were ever in a liquid Rs 250-2500 pool; the other
+  ~900 NSE intraday stocks have no 1-min history). No pool filter, no top-N.
+  NIFTY for the index rules. ATR = mean true range of the 20 sessions
+  before the day, from `daily/` (no ATR -> ORB skipped for that stock-day).
+- Candle patterns on the closed signal bar (long / short mirrors):
+  ENGULFING (body engulfs the previous opposite-colour body), HAMMER /
+  SHOOTING_STAR (wick toward the move's origin >= 2x body, opposite wick <=
+  body, close in the favourable 40% of the range), PIN_BAR (that wick >=
+  2/3 of the range), MARUBOZU (body >= 60% of the range, close in the
+  favourable 25%, candle coloured in the trade's direction). Any one counts.
+- Setups (5-min bars unless noted; signals 09:20 (ORB) / 09:30 (others) to
+  14:30; short = mirror image):
+  - ORB: range = first 5-min bar; long only if it closed green (short only
+    if red); signal = first 5-min close beyond the range. Stop 10% of ATR
+    from the entry fill (Zarattini/Barbon/Aziz 2024).
+  - VWAP: previous 5-min close on the other side of VWAP, this close beyond
+    it; NIFTY's last close on the same side of its session mean price. Stop:
+    signal bar's low (short: high).
+  - EMA 5/15: EMA5 beyond EMA15, both moved >= 0.1% in the trade's
+    direction over 3 bars; signal bar touched EMA5 and closed beyond EMA15.
+    Stop: signal bar's low/high. EMAs include the prior session.
+  - BB (15-min, 20 / 2.0, incl. prior session): bar pierced the lower band
+    (short: upper) and closed back inside. Stop: bar low/high.
+  - LEVEL (15-min): long = low within 0.3% of (or below) the previous
+    day's low and close above it; short = high within 0.3% of (or above)
+    the previous day's high and close below it. Stop: bar low/high.
+  - A stop on the wrong side of the entry fill (gap) skips the trade.
+- Exit variants (each with the stop and the 15:15 square-off):
+  NATIVE = the setup's own exit (ORB: hold to square-off; VWAP: 5-min
+  close back across VWAP; EMA: 5-min close back across EMA15; BB: the
+  middle band at signal time; LEVEL: the previous close when it lies in the
+  profit direction) — trend exits fill at the next 1-min open; T1 / T2 =
+  +1% / +2% price (= 5% / 10% on margin at Groww's up-to-5x MIS leverage);
+  T5 / T10 = +5% / +10% price (5-10% of the position value).
+- Timeframes (user, 2026-09-30: price action needs 5/10/30-min and daily
+  candles, not only 1-min): 1-min bars are the stored raw data; 5/10/15/
+  30-min bars are aggregated from them (09:15-aligned, a bar counts once
+  closed) and daily bars come from `daily/`. Multi-timeframe (MTF) trend at
+  the signal: 10-min and 30-min = last closed bar's close vs EMA20 of that
+  timeframe's closes (two prior sessions carried for warm-up); daily =
+  previous close vs EMA20 of prior daily closes. MTF variant = the same
+  trades kept only when all three agree with the trade's side. So every
+  setup x side x exit runs twice: ALL and MTF (100 primary variants).
+- Controls and diagnostics (not filters, not tuned on): NATIVE without the
+  candle requirement; every trade tagged with NIFTY's move since its open
+  at entry (UP > +0.25%, DOWN < -0.25%, else SIDEWAYS — known at entry, so
+  usable later as a rule), the day's NIFTY close-vs-open type (hindsight,
+  label only) and opening RVOL (first-5-min volume / 20-session average
+  daily volume x the market's first-5-min volume share).
+- Protocol (#24 splits, each used once): explore 2025-11-03..2026-06-30;
+  pass = >= 100 trades, net P&L > 0 after costs, profit factor >= 1.1;
+  passing setup x side x exit variants run once on validate
+  2026-07-01..2026-08-31 (net > 0, PF >= 1.05), survivors once on test
+  2026-09-01..2026-09-28. 100 primary variants are compared, so some can
+  pass explore by chance: only validate + test count as evidence. No
+  parameter changes after results; a changed rule is a new, pre-registered
+  study.
+- **Explore result (2026-09-30): nothing passes.** 161 sessions, 110,040
+  stock-days (~680 stocks/day), 1.09 M signals (`scripts/setup_study.py`,
+  2 minutes on 15 workers; report `docs/research/setup_study_explore.md`).
+  All 100 variants and all 10 no-pattern controls lose after costs; best
+  PF 0.65 (BB short, MTF, T2). Validate and test were therefore NOT run.
+  - Before charges (slippage included) every setup x side averages -Rs 15
+    to -33 per Rs 25k trade: after adding back the ~Rs 25 slippage the raw
+    edge is about zero, while Groww charges are ~Rs 56 per round trip.
+  - 5-10% targets: +5% is reached in 0.6-3.5% of trades, +10% in <= 0.8%.
+  - Candle confirmation vs none: average net differs by only -3.7 to +2.7
+    Rs per trade (no measurable value, as in Marshall et al.).
+  - MTF agreement: cuts the trade count ~3-5x; average net slightly better
+    for BB/LEVEL shorts (-62/-64 vs -71/-76 Rs), worse for VWAP/EMA; still
+    losing everywhere.
+  - Regime at entry (NIFTY move since the open) does not turn any setup
+    positive. Hindsight labels do: shorts earn +17 to +28 Rs gross per
+    trade on DOWN days (ORB, BB, LEVEL) and highly in-play stocks (RVOL >=
+    5) give +12 to +28 Rs gross on shorts; ORB long is worst at RVOL >= 5
+    (-52 Rs). Even these pockets are below the Rs 56 charges at Rs 25k.
+  - Any follow-up (e.g. shorts on in-play stocks when the market is falling
+    at entry) was suggested by these explore numbers, so it must be a new
+    pre-registered study judged on the validate/test sessions only.

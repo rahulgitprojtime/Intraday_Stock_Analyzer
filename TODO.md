@@ -121,10 +121,18 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [ ] First live `--paper` session: check tick fills, ledger growth, dashboard refresh
 - [ ] Restore open simulated positions after a worker restart (currently a new run starts)
 - [ ] Paper fills for symbols without live ticks (fall back to bars when a symbol has no feed)
-- [ ] Run paper_replay --all on data/replay_1y with the new broker (M10b baseline)
+- [ ] Run paper_replay --all with the new broker (M10b baseline; data/replay_1y was deleted 2026-09-29, needs a replay dir built from data/universe_1y)
+- [ ] Short selling in the simulated broker (it is long-only), if a short setup ever passes a study (#31)
 
 ## Intraday playbook (DECISIONS #30) — branch feature/paper-backtest-broker
 - [x] Opening shortlist (turnover, |gap|, relative volume → top 15) + 5 long setups + article risk rules; backtest `--setups`; live paper `strategy: playbook`
 - [ ] Get INDIAVIX 1-min history into the cache so the ORB VIX filter is backtested
 - [ ] Sector momentum in the shortlist (needs sector map in the strategy context)
-- [ ] Backtest on the whole-market history (data/universe_1y) instead of the curated 25 (survivorship)
+- [x] Backtest on the whole-market history instead of the curated 25 → done as the #31 study
+
+## Whole-market setup study, long + short (DECISIONS #31, pre-registered) — branch feature/paper-backtest-broker
+- [x] Research evidence (docs/research/intraday_setup_evidence.md) + pre-registration
+- [x] Engine `src/research/setup_backtest.py` + `scripts/setup_study.py` (5 setups x 2 sides x 5 exits, MTF 10/30-min + daily, candle patterns, no-pattern control)
+- [x] Explore 2025-11-03..2026-06-30: 0/100 variants pass; validate/test not run (docs/research/setup_study_explore.md)
+- [ ] (user decision) a new pre-registered study, e.g. in-play shorts when NIFTY is falling at entry, judged on validate/test only
+- [ ] (user decision) fetch 1-min history for the ~900 NSE intraday stocks the store lacks (read-only, ~30-40 min)

@@ -47,6 +47,8 @@ class TradingSession:
         for b in sorted(bars, key=lambda b: (b.ts, b.symbol)):
             if self.fill_on_bars:
                 self.broker.on_tick(b)
+            elif self.broker.last_price(b.symbol) is None:
+                self.broker.mark(b.symbol, b.close)    # paper: until the first live tick
             self.ctx._append(b)
             latest[b.symbol] = b
         self.ctx.as_of = as_of
@@ -77,5 +79,6 @@ class TradingSession:
         self.equity_curve.append((as_of, eq))
         if self.ledger is not None:
             self.ledger.record_equity(self.broker.run_id, as_of, eq)
+            self.broker.persist_positions(as_of)
             if not self.fill_on_bars:          # paper: the dashboard reads it live
                 self.ledger.commit()

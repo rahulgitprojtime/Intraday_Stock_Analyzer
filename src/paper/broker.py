@@ -324,7 +324,17 @@ class SimulatedBroker(Broker):
         if self.ledger is not None:
             self.ledger.add_trade(self.run_id, rec)
 
-    def _mark(self, symbol: str, price: float, at: datetime) -> None:
+    def persist_positions(self, at: datetime) -> None:
+        """Write open positions (with their latest mark) to the ledger."""
+        if self.ledger is not None:
+            for p in self.positions().values():
+                self.ledger.upsert_position(self.run_id, p, at)
+
+    def mark(self, symbol: str, price: float) -> None:
+        """Set the reference price without offering it as a fill event."""
+        self._mark(symbol, price, None)
+
+    def _mark(self, symbol: str, price: float, at: datetime | None) -> None:
         self._last[symbol] = price
         pos = self._positions.get(symbol)
         if pos is not None:

@@ -29,13 +29,10 @@ class PaperConfig:
     stop_atr_mult: float
     stop_fallback_pct: float
     target_r: float
-    slippage_bps: float
-    charges_pct_round_trip: float
-    eod_exit: time
 
     @classmethod
     def from_dict(cls, d: dict) -> PaperConfig:
-        e, r, f = d["entry"], d["risk"], d["fills"]
+        e, r = d["entry"], d["risk"]
         return cls(
             enabled=bool(d.get("enabled", False)), mode=str(d["mode"]),
             quantity=int(d["quantity"]),
@@ -47,9 +44,6 @@ class PaperConfig:
             no_entry_after=time.fromisoformat(e["no_entry_after"]),
             stop_atr_mult=float(r["stop_atr_mult"]), stop_fallback_pct=float(r["stop_fallback_pct"]),
             target_r=float(r["target_r"]),
-            slippage_bps=float(f["slippage_bps"]),
-            charges_pct_round_trip=float(f["charges_pct_round_trip"]),
-            eod_exit=time.fromisoformat(f["eod_exit"]),
         )
 
 

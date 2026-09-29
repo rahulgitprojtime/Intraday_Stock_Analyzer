@@ -1,8 +1,10 @@
-"""Paper-trading replay — M10a (DECISIONS #20). SIMULATION ONLY.
+"""Paper-trading replay — M10a (DECISIONS #20, #29). SIMULATION ONLY.
 
 Replays real sessions minute by minute through the *existing* worker tick
-(same recommendations as the dashboard) and feeds the ranked list to the
-paper simulator. Writes an append-only journal and a daily report per day:
+(same recommendations as the dashboard); `RecommendationStrategy` turns the
+ranked list into orders on the simulated `BacktestBroker` (next-bar fills,
+full cost model, 15:15 square-off). Writes an append-only journal, a daily
+report and the SQLite ledger (one run per day):
 
     python scripts/paper_replay.py --replay data/replay --days 2026-09-25
     python scripts/paper_replay.py --replay data/replay --all
@@ -16,7 +18,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -24,15 +26,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.app.sources import ReplaySource  # noqa: E402
 from src.app.worker import base_context, prepare, replay_clock, run_tick  # noqa: E402
 from src.market.sector import load_sector_map  # noqa: E402
+from src.paper.broker import BacktestBroker, BrokerConfig  # noqa: E402
+from src.paper.costs import CostModel  # noqa: E402
 from src.paper.journal import Journal, version_info  # noqa: E402
+from src.paper.orders import Bar  # noqa: E402
 from src.paper.policy import PaperConfig  # noqa: E402
 from src.paper.report import write_daily_report  # noqa: E402
-from src.paper.simulator import PaperSimulator  # noqa: E402
+from src.paper.session import TradingSession  # noqa: E402
+from src.paper.strategies.recommendation import RecommendationStrategy  # noqa: E402
 from src.utils.config import load_universe, load_yaml  # noqa: E402
 
 
 def run_paper_day(replay_root: str | Path, day: date, out_root: str | Path, cfg: PaperConfig,
-                  run_id: str) -> dict:
+                  run_id: str, ledger=None) -> dict:
     sectors, _ = load_sector_map(load_universe().get("symbols") or [])
     source = ReplaySource(replay_root, day,
                           {s["index"] for s in sectors.values()} | {"BANKNIFTY"})
@@ -49,12 +55,29 @@ def run_paper_day(replay_root: str | Path, day: date, out_root: str | Path, cfg:
     if journal_path.exists():
         journal_path.unlink()          # a replay run regenerates its own journal from scratch
     journal = Journal(journal_path)
-    sim = PaperSimulator(cfg, journal, run_id, versions, "replay")
+    # generated_at = as_of: deterministic recommendations for the minute
+    recs_at = lambda as_of: run_tick(ctx, as_of, as_of)["modes"][cfg.mode]  # noqa: E731
+    strategy = RecommendationStrategy(cfg, recs_at, atr, journal, run_id, versions, "replay")
+    raw = load_yaml("paper.yaml")
+    broker_cfg = BrokerConfig.from_dict(raw["broker"])
+    ledger_run = f"{run_id}:{day.isoformat()}"
+    if ledger is not None:
+        ledger.start_run(ledger_run, "REPLAY", strategy.name, broker_cfg.starting_capital,
+                         strategy.params())
+    broker = BacktestBroker(broker_cfg, CostModel.from_dict(load_yaml("costs.yaml")), ledger,
+                            ledger_run)
+    session = TradingSession(strategy, broker, ledger=ledger)
+    session.start_day(day)
+    seen: dict[str, datetime] = {}
     for as_of in replay_clock(day):
-        state = run_tick(ctx, as_of, as_of)        # generated_at = as_of: deterministic
-        bars = {s.trading_symbol: source.minute_candles(s, as_of) for s in stocks}
-        sim.step(as_of, state["modes"][cfg.mode], bars, atr)
-    sim.finish()
+        new = []
+        for s in stocks:
+            for c in source.minute_candles(s, as_of):       # only bars closed by as_of
+                if c.timestamp > seen.get(s.trading_symbol, datetime.min):
+                    new.append(Bar.from_candle(c))
+                    seen[s.trading_symbol] = c.timestamp
+        session.step(as_of, new)
+    session.end_day(day)
     report_dir = write_daily_report(run_dir, day.isoformat(), journal.trades(), journal.missed(),
                                     versions | {"replay_or_live": "replay", "run_id": run_id,
                                                 "mode": cfg.mode, "demo": source.is_demo})
@@ -69,8 +92,11 @@ def main(argv=None) -> int:
     p.add_argument("--all", action="store_true", help="every day that has 20 prior sessions")
     p.add_argument("--out", type=Path, default=Path("reports/replay"))
     p.add_argument("--run-id", default=None)
+    p.add_argument("--ledger", type=Path, default=None,
+                   help="SQLite ledger (default paper.yaml backtest_ledger)")
     a = p.parse_args(argv)
-    cfg = PaperConfig.from_dict(load_yaml("paper.yaml"))
+    raw = load_yaml("paper.yaml")
+    cfg = PaperConfig.from_dict(raw)
     days = sorted(a.days)
     if a.all:
         all_days = sorted(date.fromisoformat(d.name) for d in a.replay.iterdir() if d.is_dir())
@@ -78,8 +104,10 @@ def main(argv=None) -> int:
     if not days:
         p.error("give --days or --all")
     run_id = a.run_id or f"{version_info()['strategy_version']}-{version_info()['config_hash']}"
+    from src.paper.ledger import Ledger
+    ledger = Ledger(a.ledger or raw["backtest_ledger"])
     for d in days:
-        res = run_paper_day(a.replay, d, a.out, cfg, run_id)
+        res = run_paper_day(a.replay, d, a.out, cfg, run_id, ledger)
         closed = [t for t in res["trades"] if t["exit_reason"]]
         net = sum(t["net_pnl"] for t in closed)
         print(f"{d}  trades={len(closed)} missed={len(res['missed'])} net={net:+.2f}  "

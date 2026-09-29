@@ -3,7 +3,7 @@ from datetime import time
 import pytest
 
 from src.paper.policy import PaperConfig, eligibility
-from src.paper.risk import initial_levels
+from src.paper.risk import entry_bracket
 from src.utils.config import load_yaml
 
 CFG = PaperConfig.from_dict(load_yaml("paper.yaml"))
@@ -19,7 +19,7 @@ def rec(**kw):
 def test_config_defaults_are_safe():
     assert CFG.enabled is False and CFG.mode == "DAY" and CFG.quantity == 10
     assert (CFG.stop_atr_mult, CFG.stop_fallback_pct, CFG.target_r) == (0.25, 0.6, 1.5)
-    assert CFG.no_entry_after == time(15, 0) and CFG.eod_exit == time(15, 20)
+    assert CFG.no_entry_after == time(15, 0)
 
 
 def test_valid_candidate_qualifies():
@@ -53,7 +53,7 @@ def test_require_in_play_when_configured():
 
 
 def test_stop_and_target_from_daily_atr_and_fallback():
-    stop, target, method = initial_levels(1000.0, daily_atr=20.0, cfg=CFG)
-    assert (stop, target, method) == (995.0, 1007.5, "atr")           # risk 5 = 0.25 x 20
-    stop, target, method = initial_levels(1000.0, daily_atr=None, cfg=CFG)
-    assert (stop, target, method) == (994.0, 1009.0, "pct_fallback")  # risk 6 = 0.6%
+    bracket, method = entry_bracket(daily_atr=20.0, cfg=CFG)
+    assert (bracket.levels(1000.0), method) == ((995.0, 1007.5), "atr")   # risk 5 = 0.25 x 20
+    bracket, method = entry_bracket(daily_atr=None, cfg=CFG)
+    assert (bracket.levels(1000.0), method) == ((994.0, 1009.0), "pct_fallback")  # 0.6%

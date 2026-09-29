@@ -24,12 +24,14 @@ def main(argv=None) -> int:
     p.add_argument("--version", default=None, help="only this strategy_version")
     p.add_argument("--title", default="Research evaluation")
     p.add_argument("--out", type=Path, default=None)
+    p.add_argument("--round", type=int, default=1, choices=(1, 2),
+                   help="1 = the ten questions (#24), 2 = continuation questions (#28)")
     a = p.parse_args(argv)
     rows = load_rows(a.labeled, a.start, a.end, a.version)
     if not rows:
         print("no labeled panel rows")
         return 1
-    text = report(rows, a.title)
+    text = report(rows, a.title, a.round)
     if a.out:
         a.out.parent.mkdir(parents=True, exist_ok=True)
         a.out.write_text(text, encoding="utf-8")

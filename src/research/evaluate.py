@@ -30,7 +30,9 @@ BOOT = 400
 # year is ~1M rows, M16).
 _KEEP = {"day", "as_of", "symbol", "mode", "strategy_version", "score", "base_score",
          "lunch_penalty", "rvol", "sector_verdict", "news_verdict", "confluence_count",
-         "raw_movement_day_change_pct", "micro_score", "triggered"}
+         "raw_movement_day_change_pct", "micro_score", "triggered",
+         "raw_movement_vwap_dist_pct", "raw_momentum_rsi", "raw_momentum_adx",   # round 2 (#28)
+         "raw_momentum_roc5_pct", "nifty_change_pct"}
 _KEEP_PREFIX = ("g_", "setup_", "xs_nifty_")
 TECH_WEIGHTS = {"setup": 0.20, "volume": 0.20, "movement": 0.15, "momentum": 0.15,
                 "liquidity": 0.05}            # the engine weights of the technical groups only
@@ -355,7 +357,50 @@ def questions(rows: list[dict]) -> list[tuple[str, list[str]]]:
     return out
 
 
-def report(rows: list[dict], title: str) -> str:
+def questions_round2(rows: list[dict]) -> list[tuple[str, list[str]]]:
+    """DECISIONS #28: what predicts continuation among the top movers (DAY rows)."""
+    day = [r for r in rows if r["mode"] == "DAY"]
+    out = []
+    windows = [("09:15", "09:15-09:45"), ("09:45", "09:45-10:30"), ("10:30", "10:30-11:30"),
+               ("11:30", "11:30-13:30"), ("13:30", "13:30-15:00"), ("15:00", None)]
+    def window(r):
+        t = r["as_of"][11:16]
+        label = None
+        for start, name in windows:
+            if t >= start:
+                label = name
+        return label
+    tb = by(day, window)
+    lines = table(tb)
+    lines += [f"- {k} vs all other rows: {verdict(v, [r for r in day if window(r) != k])}"
+              for k, v in tb.items()]
+    out.append(("11. Time of day", lines))
+
+    def ordered(n, name, key, edges, a, b):
+        bb = by(day, lambda r: band(key(r), edges))
+        out.append((f"{n}. {name}", table(bb) + [
+            ic_line(day, key, name),
+            f"- Verdict {a} vs {b}: {verdict(bb.get(a, []), bb.get(b, []))}"]))
+
+    ordered(12, "Distance above VWAP (raw %)", lambda r: r.get("raw_movement_vwap_dist_pct"),
+            [(-99, "<0"), (0, "0-0.5"), (0.5, "0.5-1"), (1, "1-2"), (2, ">2")], "0-0.5", ">2")
+    ordered(13, "RSI (5-min bars)", lambda r: r.get("raw_momentum_rsi"),
+            [(0, "<50"), (50, "50-60"), (60, "60-70"), (70, "70-80"), (80, ">80")], "50-60", ">80")
+    for n, name, key in ((14, "ADX (quintiles)", "raw_momentum_adx"),
+                         (16, "5-min ROC (raw %, quintiles)", "raw_momentum_roc5_pct")):
+        qb = quantile_buckets(day, lambda r, k=key: r.get(k))
+        ks = list(qb)
+        out.append((f"{n}. {name}", table(qb) + [
+            ic_line(day, lambda r, k=key: r.get(k), name),
+            f"- Verdict top vs bottom quintile: "
+            f"{verdict(qb[ks[-1]], qb[ks[0]]) if len(ks) >= 2 else 'INSUFFICIENT'}"]))
+    ordered(15, "Market direction (NIFTY % since open)", lambda r: r.get("nifty_change_pct"),
+            [(-99, "<-0.5"), (-0.5, "-0.5..0"), (0, "0..0.5"), (0.5, ">0.5")], ">0.5", "<-0.5")
+    out.sort(key=lambda q: int(q[0].split(".")[0]))
+    return out
+
+
+def report(rows: list[dict], title: str, round_: int = 1) -> str:
     days = sorted({r["day"] for r in rows})
     head = [f"# {title}", "",
             f"Panel rows: {len(rows)} · days: {len(days)} "
@@ -367,6 +412,6 @@ def report(rows: list[dict], title: str) -> str:
     if len(days) < MIN_DAYS:
         head += [f"**{len(days)} day(s): description, not evidence.**", ""]
     body = []
-    for name, lines in questions(rows):
+    for name, lines in (questions(rows) if round_ == 1 else questions_round2(rows)):
         body += [f"## {name}", "", *lines, ""]
     return "\n".join(head + body)

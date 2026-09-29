@@ -96,3 +96,12 @@ def test_load_rows_keeps_panel_rows_and_only_needed_columns(tmp_path):
     [r] = load_rows(tmp_path)
     assert r["g_volume"] == 50.0 and r["setup_ORB15"] == "NONE" and r["xs_nifty_5"] == 0.1
     assert "p_volume_rvol" not in r and "fwd_5" not in r and "config_hash" not in r
+
+
+def test_round2_report_has_the_six_questions():
+    from src.research.evaluate import report
+    rs = rows(3, 4, 0.1, 1, as_of="2026-01-01T10:00:00", raw_movement_vwap_dist_pct=0.3,
+              raw_momentum_rsi=65.0, raw_momentum_adx=25.0, raw_momentum_roc5_pct=0.4,
+              nifty_change_pct=0.2)
+    text = report(rs, "t", round_=2)
+    assert text.count("## ") == 6 and "## 11." in text and "## 16." in text

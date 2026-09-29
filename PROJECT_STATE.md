@@ -131,9 +131,17 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   NATIVE / +1 / +2 / +5 / +10%. Explore (161 sessions, 110k stock-days,
   1.09 M signals): 0 of 100 variants pass after Groww charges; the raw
   edge before costs is ~0. Validate/test not run.
+- **User's trading plan** (DECISIONS #32, pre-registered):
+  `src/research/plan_backtest.py` + `scripts/plan_study.py` — Rs 4 lakh,
+  Rs 80k per trade, 2% trailing stop, +3/4/5% targets, 3-5 trades a day
+  with a NIFTY/BANK NIFTY + market-volume gate. Explore: 0 of 24 variants
+  pass (all setups -Rs 57k to -80k). Trade-level breakdown
+  (`src/research/trade_analysis.py`, `scripts/plan_trade_analysis.py`,
+  `docs/research/plan_trade_analysis.md`): costs ~Rs 154/trade vs a
+  pre-cost edge of Rs 4 (all signals) to Rs 70 (the plan's picks).
 
 ### Tests
-542 passing, 1 skipped (2026-09-30, paper/backtest branch; 417 before it) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
+554 passing, 1 skipped (2026-09-30, paper/backtest branch; 417 before it) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.
 pandas/pyarrow DLLs are blocked by Windows Application Control in this
 venv — unblocked 2026-09-27 (pandas 3.0.6, pyarrow 25.0.1, streamlit

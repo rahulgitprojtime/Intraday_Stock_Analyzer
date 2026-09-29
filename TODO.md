@@ -135,4 +135,11 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - [x] Engine `src/research/setup_backtest.py` + `scripts/setup_study.py` (5 setups x 2 sides x 5 exits, MTF 10/30-min + daily, candle patterns, no-pattern control)
 - [x] Explore 2025-11-03..2026-06-30: 0/100 variants pass; validate/test not run (docs/research/setup_study_explore.md)
 - [ ] (user decision) a new pre-registered study, e.g. in-play shorts when NIFTY is falling at entry, judged on validate/test only
+
+## User's trading plan (DECISIONS #32, pre-registered) — branch feature/paper-backtest-broker
+- [x] Engine `src/research/plan_backtest.py` + `scripts/plan_study.py` (Rs 4 lakh, Rs 80k/trade, 2% trailing stop, +3/4/5% targets, 3-5 trades/day, market gate)
+- [x] Explore 2025-11-03..2026-06-30: 0/24 pass; validate/test not run (docs/research/plan_study_explore.md)
+- [x] Trade-level breakdown, rules unchanged (docs/research/plan_trade_analysis.md)
+- [ ] (user decision) any rule change = a new pre-registered study judged on the Jul-Sep sessions only
+- [ ] Re-fetch the stock 1-min files for 2025-11-06 (the store has only index files that day)
 - [ ] (user decision) fetch 1-min history for the ~900 NSE intraday stocks the store lacks (read-only, ~30-40 min)

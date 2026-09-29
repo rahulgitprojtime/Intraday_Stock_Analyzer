@@ -320,8 +320,9 @@ def detect(d: DayInput, candle: bool = True) -> list[Signal]:
 @dataclass(frozen=True)
 class Exit:
     t: int
-    price: float
+    price: float                    # the fill, slippage included
     reason: str
+    raw: float | None = None        # the same exit before slippage (for cost accounting)
 
 
 def _buy(px: float) -> float:
@@ -484,45 +485,59 @@ def store_days(root: str | Path) -> list[str]:
                   if p.is_dir() and len(p.name) == 10 and p.name[4] == "-")
 
 
-def run_chunk(store: str, days: list[str], prior_days: list[str], out_csv: str,
-              costs_dict: dict, first5_share: float) -> dict:
-    """Study consecutive `days` (prior_days = the two store days before the
-    first one, for warm-up) and write one CSV row per signal."""
-    root, costs = Path(store), CostModel.from_dict(costs_dict)
+def iter_days(store: str, days: list[str], prior_days: list[str], indices: tuple = ()):
+    """Yield (day, {symbol: (DayInput, 20-session average daily volume)},
+    {index: 1-min bars}) for consecutive `days`. prior_days = the two store
+    days before the first one (indicator warm-up); stocks = the symbols with
+    a daily file (index CSVs have none)."""
+    root = Path(store)
     stocks = {p.stem for p in (root / "daily").glob("*.csv")}
     hist: dict[str, DailyHistory] = {}
-    counts = defaultdict(int)
     cache: list[dict] = []                            # aggregates of the last two sessions
 
     def load(day: str) -> tuple[dict, dict]:
-        folder = root / day
-        raw = {p.stem: read_bars(p) for p in folder.glob("*.csv") if p.stem in stocks}
+        raw = {p.stem: read_bars(p) for p in (root / day).glob("*.csv") if p.stem in stocks}
         return raw, {s: {m: aggregate(b, m) for m in TIMEFRAMES} for s, b in raw.items()}
 
     for pd in prior_days[-2:]:
         cache.append(load(pd)[1])
+    for day in days:
+        raw, aggs = load(day)
+        idx = {n: read_bars(root / day / f"{n}.csv") if (root / day / f"{n}.csv").exists() else []
+               for n in ("NIFTY", *indices)}
+        inputs = {}
+        for sym in sorted(raw):
+            if not raw[sym]:
+                continue
+            info = hist.setdefault(sym, DailyHistory(root / "daily" / f"{sym}.csv")).before(day)
+            avg_v = info.pop("avg_volume", None)
+            prior = {m: [c for sess in cache if sym in sess for c in sess[sym][m]]
+                     for m in TIMEFRAMES}
+            inputs[sym] = (DayInput(raw[sym], aggs[sym], prior, idx["NIFTY"], **info), avg_v)
+        yield day, inputs, idx
+        cache = (cache + [aggs])[-2:]
+
+
+def rvol5(bars: list[K], avg_volume: float | None, first5_share: float) -> float | None:
+    """First-5-min volume vs normal (the 20-session average day x the
+    market's usual first-5-min share)."""
+    first5 = sum(b.v for b in bars if b.t < 5)
+    return first5 / (avg_volume * first5_share) if avg_volume and first5_share else None
+
+
+def run_chunk(store: str, days: list[str], prior_days: list[str], out_csv: str,
+              costs_dict: dict, first5_share: float) -> dict:
+    """Study consecutive `days` and write one CSV row per signal."""
+    costs = CostModel.from_dict(costs_dict)
+    counts = defaultdict(int)
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS)
         w.writeheader()
-        for day in days:
-            raw, aggs = load(day)
-            nifty = root / day / "NIFTY.csv"
-            index = read_bars(nifty) if nifty.exists() else []
-            for sym in sorted(raw):
-                bars = raw[sym]
-                if not bars:
-                    continue
-                h = hist.setdefault(sym, DailyHistory(root / "daily" / f"{sym}.csv"))
-                info = h.before(day)
-                avg_v = info.pop("avg_volume", None)
-                first5 = sum(b.v for b in bars if b.t < 5)
-                rvol5 = first5 / (avg_v * first5_share) if avg_v and first5_share else None
-                prior = {m: [c for sess in cache if sym in sess for c in sess[sym][m]]
-                         for m in TIMEFRAMES}
-                d = DayInput(bars, aggs[sym], prior, index, **info)
-                w.writerows(study_stock_day(day, sym, d, costs, rvol5, counts))
+        for day, inputs, _ in iter_days(store, days, prior_days):
+            for sym, (d, avg_v) in inputs.items():
+                w.writerows(study_stock_day(day, sym, d, costs, rvol5(d.bars, avg_v, first5_share),
+                                            counts))
                 counts["stock_days"] += 1
-            cache = (cache + [aggs])[-2:]
     return dict(counts)
 
 

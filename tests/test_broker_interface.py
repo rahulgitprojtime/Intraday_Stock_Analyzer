@@ -54,7 +54,9 @@ def test_simulated_trading_cannot_reach_groww():
     files = list(Path("src/paper").rglob("*.py")) + [Path("scripts/paper_replay.py"),
                                                       Path("app/pages/1_Paper_trading.py"),
                                                       Path("src/research/setup_backtest.py"),
-                                                      Path("scripts/setup_study.py")]
+                                                      Path("scripts/setup_study.py"),
+                                                      Path("src/research/plan_backtest.py"),
+                                                      Path("scripts/plan_study.py")]
     for path in files:
         src = path.read_text(encoding="utf-8")
         imports = re.findall(r"^\s*(?:from|import)\s+(\S+)", src, re.M)

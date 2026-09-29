@@ -659,3 +659,72 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   - Any follow-up (e.g. shorts on in-play stocks when the market is falling
     at entry) was suggested by these explore numbers, so it must be a new
     pre-registered study judged on the validate/test sessions only.
+
+### #32 — The user's trading plan on the whole market (2026-09-30, user directive; PRE-REGISTERED before any run)
+- User rules: stop 2% of the share price, trailing; target 3-5%; budget
+  Rs 4 lakh for intraday; 3-5 trades a day, 5 only on a very good day, no
+  minimum; skip the day when NIFTY / BANK NIFTY are flat or sideways on
+  very low volume. Setups, sides, candle confirmation, fills, charges and
+  data as #31.
+- Made concrete (engine `src/research/plan_backtest.py`):
+  - Size Rs 80,000 per trade (Rs 4 lakh / 5, the most trades that can be
+    open together; no leverage); qty = floor(80,000 / signal close).
+  - Stop 2% of the entry fill below it (short: above). Trailing: after each
+    closed 1-min bar, stop = max(stop, highest high since entry - 2% of the
+    entry) (short mirrored). A bar's own high moves the stop only after that
+    bar closes, so no intrabar order is assumed. Fills as #29.
+  - Targets T3 / T4 / T5 = +3 / +4 / +5% from the fill; comparison TRAIL =
+    no target (trailing stop or 15:15 only).
+  - Market gate at each signal, from bars closed by then. Index move = last
+    close vs the day's open for NIFTY and BANK NIFTY. Market volume = all
+    stocks' volume so far today / (their 20-session average daily volume x
+    the market's normal share of volume by this minute,
+    `config/market_volume_curve.json`); the index feeds carry no volume.
+    - QUIET: both indices within +/-0.25% of their open AND market volume
+      < 0.8 -> no new trades (a day that stays quiet is skipped).
+    - STRONG ("very good day"): either index >= 0.5% from its open AND
+      market volume >= 1.0 -> up to 5 entries that day.
+    - Otherwise NORMAL -> up to 3 entries. No minimum.
+  - Choice among signals: in signal time order; same minute -> higher
+    opening RVOL first (stocks in play), then symbol, then setup in the
+    order ORB, VWAP, EMA, BB, LEVEL; one trade per stock per day; longs and
+    shorts both allowed. (Two setups firing on one stock in the same minute
+    give the same trade here: same entry, same exits.)
+  - Portfolios: each setup alone and all five together (6) x exits T3 / T4
+    / T5 / TRAIL = 24 variants. Control: all five with the gate off (QUIET
+    counts as NORMAL). Diagnostic: the four exits on EVERY signal (no
+    selection), per-trade result at Rs 80k.
+- Reported per portfolio: trades, days traded / skipped, win %, net after
+  charges, return on Rs 4 lakh, max drawdown, daily Sharpe, exit reasons.
+- Protocol (#24 splits): explore 2025-11-03..2026-06-30 (already seen by
+  #31 with other exits; these rules are the user's, not fitted to it);
+  pass = >= 100 trades, net > 0, PF >= 1.1; passing variants run once on
+  validate 2026-07-01..2026-08-31 (net > 0, PF >= 1.05), survivors once on
+  test 2026-09-01..2026-09-28. No changes after results.
+- **Explore result (2026-09-30): nothing passes; validate/test NOT run.**
+  160 sessions (the store has no stock files for 2025-11-06, left out),
+  110,040 stock-days, 469,060 candle-confirmed signals
+  (`scripts/plan_study.py`; report `docs/research/plan_study_explore.md`).
+  All five setups, gate on: T3 -Rs 63,431 (-15.9% of Rs 4 lakh), T4
+  -57,073, T5 -74,612, TRAIL -80,216 over 710 trades; max drawdown
+  Rs 68-96k. Closest: LEVEL alone, TRAIL, +Rs 3,295 (PF 1.01, fails 1.1).
+  The gate hardly acted: QUIET at 09:30 on 2 days, never all session;
+  STRONG phases on 120 days, so ~4.4 trades a day.
+- Trade-level analysis (2026-09-30, user request, rules unchanged): the run
+  was repeated with diagnostic tags only (no-candle control signals, never
+  traded; MTF tag; NIFTY regime at entry; stock liquidity; exact pre-cost
+  P&L) and reproduced all 28 portfolio results exactly
+  (`scripts/plan_trade_analysis.py`, `docs/research/plan_trade_analysis.md`).
+  - Costs ~Rs 154 per Rs 80k trade (charges 75 + slippage 78). Pre-cost:
+    all signals Rs +4.4 per trade (t 0.4); the plan's 710 trades Rs +70.5
+    (t 1.3; +Rs 50,044 in total vs Rs 107,117 of costs).
+  - The earlier "before costs" figure charged slippage on target exits
+    (limit orders have none); the exact T3 figure is +Rs 41,502, not 46,655.
+  - No entry-side category's average pre-cost P&L reaches the cost of a
+    trade. Positive in both halves of the period: opening RVOL >= 10
+    (+82, t 3.2), stocks >= Rs 1,000 cr daily value (+44, t 3.2), EMA setup
+    (+27, t 2.0), entries 11:00-11:59 (+48, t 2.2); the plan's shorts
+    (+167, t 2.1) vs its longs (-13). Candle confirmation adds nothing
+    (control with a pattern -1.5 vs without +6.5 per trade).
+  - Hindsight: a trade's side vs the day's NIFTY direction swings its
+    pre-cost result by +-Rs 190-300; the signals do not anticipate it.

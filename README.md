@@ -85,6 +85,10 @@ python scripts/backtest.py --strategy playbook --from 2025-10-13 --to 2026-09-28
 # Whole-market setup study, long + short, every stock in data/universe_1y (DECISIONS #31)
 python scripts/setup_study.py --from 2025-11-03 --to 2026-06-30 --name explore
 python scripts/setup_study.py --from 2026-07-01 --to 2026-08-31 --name validate --only-passed data/research/setup_study/explore/summary.json
+# The user's trading plan: Rs 4 lakh, 2% trailing stop, +3/4/5% targets, 3-5 trades/day (DECISIONS #32)
+python scripts/plan_study.py --from 2025-11-03 --to 2026-06-30 --name explore
+# ...and its trade-level breakdown (setup, side, exit, candle, trend, NIFTY, time, weekday, holding, stock)
+python scripts/plan_trade_analysis.py --run data/research/plan_study/explore --out docs/research/plan_trade_analysis.md
 # Replay the recommendation engine as a strategy (journal + daily report + ledger)
 python scripts/paper_replay.py --replay data/replay --days 2026-09-25
 # Live paper trading during market hours (strategy from config/paper.yaml)

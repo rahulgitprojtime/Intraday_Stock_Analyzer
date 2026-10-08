@@ -77,17 +77,24 @@ def _mean(parts: dict):
     return sum(have) / len(have) if have else None
 
 
-def prescore(q: dict, st: DailyStats, curve: Sequence[float]) -> tuple[float, dict]:
+def prescore(q: dict, st: DailyStats, curve: Sequence[float],
+             short: bool = False) -> tuple[float, dict]:
     """Stage-1 score for one quote: MOVEMENT (change vs previous close, range
     vs daily ATR, position in today's range, distance above VWAP), VOLUME
     (time-adjusted volume change, acceleration vs the previous sweep),
-    LIQUIDITY (today's traded value). Same ramps as the engine's groups."""
+    LIQUIDITY (today's traded value). Same ramps as the engine's groups.
+    `short` (DECISIONS #30) mirrors the direction-dependent movement parts:
+    change below the previous close, position near the day's low, distance
+    below VWAP; volume and liquidity are direction-free."""
     last, hi, lo = q["last_price"], q.get("high"), q.get("low")
     at = q.get("at")
     frac = expected_fraction(curve, at.time()) if at else None
-    change = (last / st.prev_close - 1) * 100
+    sign = -1 if short else 1
+    change = sign * (last / st.prev_close - 1) * 100
     rng = (hi - lo) / st.atr if hi and lo and st.atr else None
     pos = (last - lo) / (hi - lo) if hi and lo and hi > lo else None
+    if pos is not None and short:
+        pos = 1 - pos
     vw = q.get("average_price")
     vol_change = q["volume"] / (st.avg_volume * frac) if frac else q.get("volume_change")
     accel = None
@@ -100,7 +107,7 @@ def prescore(q: dict, st: DailyStats, curve: Sequence[float]) -> tuple[float, di
     parts = {
         "movement": {"change": _ramp(change, 0, 3), "range": _ramp(rng, 0.3, 1.0),
                      "position": _ramp(pos, 0.5, 1.0),
-                     "vwap": _ramp((last / vw - 1) * 100, 0, 1) if vw else None},
+                     "vwap": _ramp(sign * (last / vw - 1) * 100, 0, 1) if vw else None},
         "volume": {"volume_change": _ramp(vol_change, 1, 4), "acceleration": _ramp(accel, 1, 3)},
         "liquidity": {"traded_value": _ramp(math.log10(value), 7.7, 9.0) if value > 0 else None},
     }
@@ -142,7 +149,9 @@ def expected_fraction(curve: Sequence[float], at: time) -> float:
 
 
 def rank_volume_change(quotes: Sequence[dict], stats: dict, filters: ScanFilters, at: time,
-                       curve: Sequence[float]) -> list[ScanCandidate]:
+                       curve: Sequence[float], short: bool = False) -> list[ScanCandidate]:
+    """Long side (default): up-movers when `filters.long_only`. `short`
+    (DECISIONS #30): only stocks below the previous close, mirrored score."""
     frac = expected_fraction(curve, at)
     out = []
     for q in quotes:
@@ -154,12 +163,12 @@ def rank_volume_change(quotes: Sequence[dict], stats: dict, filters: ScanFilters
                 or st.avg_traded_value < filters.min_avg_traded_value):
             continue
         change = (q["last_price"] / st.prev_close - 1) * 100
-        if filters.long_only and change <= 0:
+        if (short and change >= 0) or (not short and filters.long_only and change <= 0):
             continue
         vol_change = q["volume"] / (st.avg_volume * frac)
         qq = q if q.get("at") else q | {"at": datetime.combine(date.today(), at),
                                          "volume_change": vol_change}
-        score, parts = prescore(qq, st, curve)
+        score, parts = prescore(qq, st, curve, short)
         out.append(ScanCandidate(q["symbol"], vol_change, change, q["last_price"], q["volume"],
                                  score, parts))
     return sorted(out, key=lambda c: (-c.score, -c.volume_change, c.symbol))

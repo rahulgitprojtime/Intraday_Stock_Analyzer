@@ -82,8 +82,11 @@ python scripts/backtest.py --strategy orb --cache data/replay_1y --from 2026-06-
 python scripts/backtest.py --strategy orb --symbols RELIANCE INFY --from 2026-09-01 --to 2026-09-25 --cache data/replay_1y --fetch
 # Replay the recommendation engine as a strategy (journal + daily report + ledger)
 python scripts/paper_replay.py --replay data/replay --days 2026-09-25
-# Live paper trading during market hours (strategy from config/paper.yaml)
+# Live paper trading during market hours (strategies from config/paper.yaml:
+# recommendation long-only + ORB long/short; resumes the day after a restart)
 python -m src.app.worker --paper
+# Day report: every trade with entry, stop, target, exit and net P&L
+python scripts/paper_day_report.py --day 2026-10-09      # -> reports/paper_<day>.md
 ```
 
 ## Configuration

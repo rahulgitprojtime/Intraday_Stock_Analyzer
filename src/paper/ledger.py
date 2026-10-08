@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS positions (
 CREATE TABLE IF NOT EXISTS trades (
     run_id TEXT, symbol TEXT, entry_at TEXT, exit_at TEXT, quantity INTEGER,
     entry_price REAL, exit_price REAL, gross_pnl REAL, charges REAL, net_pnl REAL,
-    entry_tag TEXT, exit_tag TEXT, holding_minutes INTEGER);
+    entry_tag TEXT, exit_tag TEXT, holding_minutes INTEGER, direction TEXT,
+    stop_loss REAL, target REAL);
 CREATE TABLE IF NOT EXISTS daily_pnl (
     run_id TEXT, day TEXT, trades INTEGER, gross_pnl REAL, charges REAL, net_pnl REAL,
     end_equity REAL, PRIMARY KEY (run_id, day));
@@ -43,7 +44,10 @@ CREATE TABLE IF NOT EXISTS equity (
 """
 TABLES = ("runs", "orders", "fills", "positions", "trades", "daily_pnl", "equity")
 TRADE_FIELDS = ("symbol", "entry_at", "exit_at", "quantity", "entry_price", "exit_price",
-                "gross_pnl", "charges", "net_pnl", "entry_tag", "exit_tag", "holding_minutes")
+                "gross_pnl", "charges", "net_pnl", "entry_tag", "exit_tag", "holding_minutes",
+                "direction", "stop_loss", "target")
+# Columns added after the first release (DECISIONS #30); older files get them on open.
+ADDED_COLUMNS = {"trades": {"direction": "TEXT", "stop_loss": "REAL", "target": "REAL"}}
 
 
 def _iso(v: datetime | None) -> str | None:
@@ -64,10 +68,16 @@ class Ledger:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(self.path), check_same_thread=False)
+        self.conn = sqlite3.connect(str(self.path), check_same_thread=False, timeout=30)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.executescript(SCHEMA)
+        for table, cols in ADDED_COLUMNS.items():
+            have = {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+            for col, typ in cols.items():
+                if col not in have:
+                    self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+        self.conn.commit()
 
     # -- writes -----------------------------------------------------------------
 
@@ -101,8 +111,9 @@ class Ledger:
                            p.last_price, _iso(at)))
 
     def add_trade(self, run_id: str, t: dict) -> None:
-        self.conn.execute(f"INSERT INTO trades VALUES (?{',?' * len(TRADE_FIELDS)})",
-                          (run_id, *(t[k] for k in TRADE_FIELDS)))
+        cols = ", ".join(("run_id",) + TRADE_FIELDS)
+        self.conn.execute(f"INSERT INTO trades ({cols}) VALUES (?{',?' * len(TRADE_FIELDS)})",
+                          (run_id, *(t.get(k) for k in TRADE_FIELDS)))
 
     def record_equity(self, run_id: str, at: datetime, equity: float) -> None:
         self.conn.execute("INSERT OR REPLACE INTO equity VALUES (?,?,?)",
@@ -125,6 +136,10 @@ class Ledger:
 
     def _rows(self, sql: str, *args) -> list[dict]:
         return [dict(r) for r in self.conn.execute(sql, args)]
+
+    def has_run(self, run_id: str) -> bool:
+        return self.conn.execute("SELECT 1 FROM runs WHERE run_id = ?", (run_id,)).fetchone() \
+            is not None
 
     def runs(self) -> list[dict]:
         rows = self._rows("SELECT * FROM runs ORDER BY started_at DESC, run_id")

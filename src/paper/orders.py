@@ -18,6 +18,14 @@ class Side(str, Enum):
     BUY = "BUY"
     SELL = "SELL"
 
+    @property
+    def opposite(self) -> Side:
+        return Side.SELL if self is Side.BUY else Side.BUY
+
+    @property
+    def sign(self) -> int:
+        return 1 if self is Side.BUY else -1
+
 
 class OrderType(str, Enum):
     MARKET = "MARKET"
@@ -54,8 +62,10 @@ class Bar:
 
 @dataclass(frozen=True)
 class Bracket:
-    """Exit orders attached to a BUY entry, placed when it fills: a STOP sell
-    `stop` below the fill and, optionally, a LIMIT sell `target` above it.
+    """Exit orders attached to an entry, placed when it fills. For a BUY
+    (long) entry: a STOP sell `stop` below the fill and, optionally, a LIMIT
+    sell `target` above it. For a SELL (short) entry the levels mirror: a
+    STOP buy `stop` above the fill and a LIMIT buy `target` below it.
     Distances are rupees, or % of the fill when `pct` is true. The two exits
     are one-cancels-the-other."""
 
@@ -63,8 +73,9 @@ class Bracket:
     target: float | None = None
     pct: bool = False
 
-    def levels(self, fill: float) -> tuple[float, float | None]:
-        k = fill / 100 if self.pct else 1.0
+    def levels(self, fill: float, side: Side = Side.BUY) -> tuple[float, float | None]:
+        """(stop, target) for an entry on `side` filled at `fill`."""
+        k = (fill / 100 if self.pct else 1.0) * side.sign
         return (round(fill - self.stop * k, 4),
                 None if self.target is None else round(fill + self.target * k, 4))
 
@@ -89,6 +100,7 @@ class Order:
     fill_price: float | None = None
     filled_at: datetime | None = None
     active_seq: int = 0          # first market event this order may fill on (no look-ahead)
+    opening: bool = True         # opens/increases a position (False: reduces/closes one)
 
 
 @dataclass(frozen=True)
@@ -106,12 +118,18 @@ class Fill:
 
 @dataclass
 class Position:
+    """`quantity` is signed: positive long, negative short."""
+
     symbol: str
     quantity: int = 0
     avg_price: float = 0.0
     realized_pnl: float = 0.0    # gross, before charges
     charges: float = 0.0
     last_price: float | None = None
+
+    @property
+    def direction(self) -> str | None:
+        return None if not self.quantity else ("LONG" if self.quantity > 0 else "SHORT")
 
     @property
     def unrealized_pnl(self) -> float:

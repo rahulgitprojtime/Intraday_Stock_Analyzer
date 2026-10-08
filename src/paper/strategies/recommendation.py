@@ -53,6 +53,24 @@ class RecommendationStrategy(Strategy):
     def on_day_start(self, day: date, ctx: StrategyContext) -> None:
         self._reset()
 
+    def on_resume(self, orders: list[dict], fills: list[dict], ctx: StrategyContext) -> None:
+        """A restarted worker: count today's entries and re-attach journal
+        trades of still-open positions so their exits are journalled."""
+        for r in orders:
+            if r["tag"] == ENTRY_TAG and r["status"] == OrderStatus.FILLED.value:
+                self._traded[r["symbol"]] = self._traded.get(r["symbol"], 0) + 1
+        held = ctx.broker.positions()
+        charges = {f["order_id"]: f["total_charges"] for f in fills}
+        entry_charges = {r["symbol"]: charges.get(r["id"], 0.0) for r in orders
+                         if r["tag"] == ENTRY_TAG and r["status"] == OrderStatus.FILLED.value}
+        for t in self.journal.trades():
+            sym = t["symbol"]
+            if t.get("exit_timestamp") is None and sym in held:      # journal is per day
+                self._open[sym] = {"tid": t["trade_id"], "entry": t["entry_price"],
+                                   "at": datetime.fromisoformat(t["entry_timestamp"]),
+                                   "risk": t["initial_risk"],
+                                   "charges": entry_charges.get(sym, 0.0)}
+
     def on_bars(self, as_of: datetime, bars: dict, ctx: StrategyContext) -> None:
         self._drop_dead_orders()
         recs = self.recs_at(as_of)

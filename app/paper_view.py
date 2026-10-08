@@ -49,7 +49,9 @@ def live_view(ledger: Ledger, run: dict) -> dict:
         if not p["quantity"]:
             continue
         last = p["last_price"] if p["last_price"] is not None else p["avg_price"]
-        positions.append({"symbol": p["symbol"], "quantity": p["quantity"],
+        positions.append({"symbol": p["symbol"],
+                          "direction": "LONG" if p["quantity"] > 0 else "SHORT",
+                          "quantity": p["quantity"],
                           "avg_price": round(p["avg_price"], 2), "last_price": round(last, 2),
                           "unrealized_pnl": round((last - p["avg_price"]) * p["quantity"], 2),
                           "updated_at": p["updated_at"]})

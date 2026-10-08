@@ -16,16 +16,30 @@ from datetime import date, datetime
 
 class DynamicUniverse:
     def __init__(self, scanner, active_set, resolve: Callable, day: date, feed=None,
-                 news_aliases: dict | None = None, pinned: Callable[[], set] = set) -> None:
+                 news_aliases: dict | None = None, pinned: Callable[[], set] = set,
+                 short_set=None) -> None:
         self.scanner, self.active_set, self.resolve, self.day = scanner, active_set, resolve, day
         self.feed, self.news_aliases, self.pinned = feed, news_aliases or {}, pinned
+        self.short_set = short_set           # DECISIONS #30: top-N down-movers, added after the longs
         self._instruments: dict = {}
         self._ranked: dict = {}
+        self._short_only: set = set()
+
+    def short_only(self) -> set:
+        """Symbols in the universe only because of the short-side scan."""
+        return set(self._short_only)
 
     def refresh(self, ctx, now: datetime) -> list[str]:
         ranked = self.scanner.ranked(now)
         self._ranked = {c.symbol: c for c in ranked}
         active = self.active_set.update(now, ranked, set(self.pinned()))
+        if self.short_set is not None and hasattr(self.scanner, "ranked_short"):
+            down = self.scanner.ranked_short(now)
+            for c in down:
+                self._ranked.setdefault(c.symbol, c)
+            shorts = self.short_set.update(now, down, set())
+            self._short_only = set(shorts) - set(active)
+            active = active + [s for s in shorts if s not in active]
         errors: list[str] = []
         current = [i.trading_symbol for i in ctx.stocks]
         if set(active) != set(current):

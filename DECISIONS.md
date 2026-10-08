@@ -523,3 +523,43 @@ Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
   330 trades, win rate 29%, net -Rs 29,259 on Rs 1 lakh, charges Rs 18,023
   (about Rs 55 per round trip on ~Rs 25k positions: brokerage dominates).
   Unoptimised sample, not evidence for or against ORB.
+
+### #30 — Short side for paper trading; restart resume; day report (2026-10-08, user request)
+Supersedes the long-only parts of #11 and #29 **for the simulated broker and
+ORB only**. The recommendation engine, its scoring and the research loop stay
+long-only (#11, #24): a short-side engine would be a new, untested model.
+- User 2026-10-08: "add short positions too … for any open positions make
+  sure you set up target, stoploss and record the net profit/loss on exit;
+  keep running this strategy and record the results until end of day".
+- Broker: signed positions (long > 0, short < 0). An order that reduces the
+  current position is an exit, everything else opens/adds; exits may not
+  flip. Opening a short needs `broker.allow_short` (paper.yaml: true).
+  Bracket levels mirror for shorts (STOP buy above the fill, LIMIT buy
+  below). Square-off buys shorts back. Margin: a short blocks its full
+  notional, like a long (MIS leverage ignored; conservative). Costs are by
+  side as before (STT on the sell leg = a short's entry).
+- Trades record `direction`, `stop_loss`, `target` (ledger columns added in
+  place to older files).
+- ORB `allow_short`: the first close below the range low → short, stop at
+  ~the range high, target `target_r` x risk below. One attempt per symbol
+  per day, whichever side breaks first.
+- Universe: `scan.short_top_n` down-movers (below the previous close,
+  mirrored movement score: change, position near the low, below VWAP) are
+  added after the long top N; `short_movers_per_cycle` are quoted each
+  minute (130 quotes/min total, inside the 200 budget). Short-only names are
+  removed from the research snapshots so the pre-registered population is
+  unchanged.
+- Live paper runs several strategies side by side (`paper.yaml strategies:
+  [recommendation, orb]`), one broker and one ledger run each, sharing one
+  SQLite connection. Run id is one per strategy per day
+  (`paper:<day>:<strategy>`): a restarted worker RESUMES it — fills are
+  replayed to rebuild positions and cash, open stop/target orders are
+  re-armed, stale pending entries cancelled, and the strategy is told what
+  it already traded. Replaces #29's "a restart starts a new run". Open
+  positions are pinned in the dynamic universe so their prices keep coming.
+- `reports/paper_<day>.md`: every trade with direction, entry, stop,
+  target, exit, exit reason, gross/charges/net, per strategy and in total;
+  written when the worker stops and by `scripts/paper_day_report.py`
+  (live_day.ps1 label phase). live_day.ps1 starts the worker with `--paper`.
+- Caveat: #29's ORB backtest (long only, 83 days) lost money after costs;
+  shorts are not evidence of an edge either. Paper results are measurements.

@@ -55,5 +55,10 @@ class Strategy(ABC):
     def on_fill(self, fill: Fill, ctx: StrategyContext) -> None:
         pass
 
+    def on_resume(self, orders: list[dict], fills: list[dict], ctx: StrategyContext) -> None:
+        """Called once after `on_day_start` when a restarted worker resumes the
+        day's ledger run (`orders`/`fills`: its rows). Rebuild per-day state,
+        e.g. which symbols were already traded, so nothing is entered twice."""
+
     def on_day_end(self, day: date, ctx: StrategyContext) -> None:
         pass

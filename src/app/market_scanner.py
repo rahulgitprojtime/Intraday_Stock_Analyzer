@@ -32,6 +32,11 @@ from src.quantitative.volume_scan import (
 )
 from src.utils.ratelimit import RateLimiter
 
+def _movement(scored: tuple[float, dict]) -> float:
+    have = [v for v in scored[1]["movement"].values() if v is not None]
+    return sum(have) / len(have) if have else 0.0
+
+
 STATS_LOOKBACK_DAYS = 60          # calendar days fetched to get 20 sessions (< 180 limit)
 
 
@@ -46,6 +51,8 @@ class ScannerConfig:
     quote_workers: int = 4
     max_calls_per_second: float = 8      # Groww Live Data limit is 10/s
     quote_max_age_seconds: float = 180   # older quotes stop counting
+    short_top_n: int = 0                 # DECISIONS #30: short-side movers added to the universe
+    short_movers_per_cycle: int = 0      # down-movers quoted each minute (0 = short side off)
 
     @classmethod
     def from_dict(cls, d: dict) -> ScannerConfig:
@@ -54,7 +61,8 @@ class ScannerConfig:
                    float(d.get("prep_calls_per_minute", 150)),
                    int(d.get("movers_per_cycle", 100)), int(d.get("quote_workers", 4)),
                    float(d.get("max_calls_per_second", 8)),
-                   float(d.get("quote_max_age_seconds", 180)))
+                   float(d.get("quote_max_age_seconds", 180)),
+                   int(d.get("short_top_n", 0)), int(d.get("short_movers_per_cycle", 0)))
 
 
 class MarketScanner:
@@ -172,20 +180,22 @@ class MarketScanner:
                 ltp.update(self.adapter.get_ltp(missing))
             except Exception as exc:
                 errors.append(f"scan ltp: {type(exc).__name__}: {exc}")
-        moving = []
+        moving, falling = [], []
         for sym in self.pool:
             last, o, st = ltp.get(sym), ohlc.get(sym), self.stats.get(sym)
             if last is None or o is None or st is None:
                 continue
-            if self.filters.long_only and last <= st.prev_close:
-                continue
             q = {"symbol": sym, "volume": 0, "last_price": last, "open": o.open,
                  "high": max(o.high, last), "low": min(o.low, last), "at": now}
-            parts = prescore(q, st, self.curve)[1]["movement"]
-            have = [v for v in parts.values() if v is not None]
-            moving.append((sum(have) / len(have) if have else 0.0, sym))
+            if self.cfg.short_movers_per_cycle and last < st.prev_close:
+                falling.append((_movement(prescore(q, st, self.curve, True)), sym))
+            if self.filters.long_only and last <= st.prev_close:
+                continue
+            moving.append((_movement(prescore(q, st, self.curve)), sym))
         top = [sym for _, sym in sorted(moving, key=lambda m: (-m[0], m[1]))]
         top = top[: self.cfg.movers_per_cycle]
+        down = [sym for _, sym in sorted(falling, key=lambda m: (-m[0], m[1]))]
+        top += [s for s in down[: self.cfg.short_movers_per_cycle] if s not in top]
         with ThreadPoolExecutor(max_workers=self.cfg.quote_workers) as ex:
             errors += [e for e in ex.map(lambda s: self._quote_one(s, now), top) if e]
         self._calls += len(top)
@@ -215,12 +225,22 @@ class MarketScanner:
 
     # -- results ----------------------------------------------------------------
 
-    def ranked(self, now: datetime):
+    def _fresh_quotes(self, now: datetime) -> list[dict]:
         max_age = self.cfg.quote_max_age_seconds
         with self._lock:
-            quotes = [q for q in self._quotes.values()
-                      if (now - q["at"]).total_seconds() <= max_age]
-        return rank_volume_change(quotes, self.stats, self.filters, now.time(), self.curve)
+            return [q for q in self._quotes.values()
+                    if (now - q["at"]).total_seconds() <= max_age]
+
+    def ranked(self, now: datetime):
+        return rank_volume_change(self._fresh_quotes(now), self.stats, self.filters, now.time(),
+                                  self.curve)
+
+    def ranked_short(self, now: datetime):
+        """Down-movers (below the previous close), mirrored score — DECISIONS #30."""
+        if not self.cfg.short_top_n:
+            return []
+        return rank_volume_change(self._fresh_quotes(now), self.stats, self.filters, now.time(),
+                                  self.curve, short=True)
 
     def status(self) -> dict:
         with self._lock:
@@ -234,8 +254,13 @@ class MarketScanner:
                 "volume_change": round(c.volume_change, 4),
                 "day_change_pct": round(c.day_change_pct, 4), "volume": c.volume}
                for c in self.ranked(now)[: self.cfg.top_n]]
+        short_top = [{"symbol": c.symbol, "scan_score": round(c.score, 2),
+                      "volume_change": round(c.volume_change, 4),
+                      "day_change_pct": round(c.day_change_pct, 4), "volume": c.volume}
+                     for c in self.ranked_short(now)[: self.cfg.short_top_n]]
         path = self.scans_dir / f"{now.date().isoformat()}.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps({"at": now.isoformat(), "active": active, "top": top,
+                                **({"short_top": short_top} if short_top else {}),
                                 **self.status()}) + "\n")

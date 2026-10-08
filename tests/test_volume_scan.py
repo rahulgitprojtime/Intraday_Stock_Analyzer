@@ -158,3 +158,18 @@ def test_price_band_filters_the_ranking():
              for s, p in (("CHEAP", 200), ("MID", 1000), ("DEAR", 3000))}
     quotes = [q("CHEAP", 2_000_000, 210), q("MID", 2_000_000, 1010), q("DEAR", 2_000_000, 3030)]
     assert [c.symbol for c in rank_volume_change(quotes, stats, band, time(12, 22), CURVE)] == ["MID"]
+
+
+def test_short_ranking_keeps_only_down_movers_with_a_mirrored_score():
+    at = time(12, 22)
+    quotes = [q("UP", 2_000_000, 103) | {"high": 103, "low": 99},
+              q("DOWN", 2_000_000, 97) | {"high": 101, "low": 97},
+              q("DOWNWEAK", 2_000_000, 99.5) | {"high": 101, "low": 99}]
+    st = {s: stats(s) for s in ("UP", "DOWN", "DOWNWEAK")}
+    short = rank_volume_change(quotes, st, FILTERS, at, CURVE, short=True)
+    assert [c.symbol for c in short] == ["DOWN", "DOWNWEAK"]          # long_only does not apply
+    long_ = rank_volume_change(quotes, st, FILTERS, at, CURVE)
+    assert [c.symbol for c in long_] == ["UP"]
+    m_s, m_l = short[0].parts["movement"], long_[0].parts["movement"]
+    assert m_s["change"] == pytest.approx(m_l["change"])             # 3% down mirrors 3% up
+    assert m_s["position"] == m_l["position"] == 100.0                 # at the low / at the high

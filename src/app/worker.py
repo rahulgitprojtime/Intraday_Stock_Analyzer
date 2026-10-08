@@ -290,7 +290,9 @@ def _dynamic_universe(adapter, master, scan_cfg: dict, data_dir: Path, feed, fee
         ltp_source=lambda: _feed_prices(feed_store))
     return DynamicUniverse(scanner, ActiveSet(cfg.top_n, cfg.min_stay_minutes), master.resolve,
                            date.today(), feed=feed,
-                           news_aliases=load_yaml("news.yaml").get("aliases") or {})
+                           news_aliases=load_yaml("news.yaml").get("aliases") or {},
+                           short_set=ActiveSet(cfg.short_top_n, cfg.min_stay_minutes)
+                           if cfg.short_top_n else None)
 
 
 def _feed_prices(store) -> dict[str, float]:
@@ -336,6 +338,19 @@ def _news_service(symbols: list[str]):
                        cfg, raw.get("aliases") or {}, symbols)
 
 
+def _long_research_view(ctx, state: dict) -> dict:
+    """The research panel (M14, pre-registered) is about LONG candidates among
+    the up-movers; names that are in the universe only as short-side movers
+    (DECISIONS #30) are left out so the recorded population is unchanged."""
+    shorts = ctx.universe.short_only() if ctx.universe is not None and \
+        hasattr(ctx.universe, "short_only") else set()
+    if not shorts:
+        return state
+    modes = {m: [r for r in recs if r["symbol"] not in shorts]
+             for m, recs in (state.get("modes") or {}).items()}
+    return state | {"modes": modes}
+
+
 def run_loop(ctx: WorkerContext, clock, out: Path, delay: float, ticks: int | None,
              recorder=None, paper=None) -> None:
     """Tick until the clock ends; the live feed is always stopped on exit.
@@ -347,7 +362,7 @@ def run_loop(ctx: WorkerContext, clock, out: Path, delay: float, ticks: int | No
             write_state(out, state)
             if recorder is not None:
                 try:
-                    recorder.record(state)
+                    recorder.record(_long_research_view(ctx, state))
                 except Exception as exc:        # research must never stop the worker
                     ctx.errors.append(f"snapshots: {type(exc).__name__}: {exc}")
             if paper is not None:
@@ -429,10 +444,15 @@ def main(argv=None) -> int:
                                     a.panel_minutes)
     paper = None
     if not a.replay and (a.paper or load_yaml("paper.yaml").get("enabled")):
-        from src.app.paper_live import build_live_paper
-        paper = build_live_paper(ctx, day)     # replay days: scripts/paper_replay.py
+        from src.app.paper_live import build_live_papers
+        paper = build_live_papers(ctx, day)    # replay days: scripts/paper_replay.py
+        if ctx.universe is not None:           # open positions keep streaming prices
+            ctx.universe.pinned = paper.open_symbols
         paper.start()
-        print(f"Paper trading (SIMULATION): {paper.session.broker.run_id}", flush=True)
+        for s in paper.sessions:
+            held = f" (resumed; holding {', '.join(s.resumed) or 'nothing'})" \
+                if s.resumed is not None else ""
+            print(f"Paper trading (SIMULATION): {s.session.broker.run_id}{held}", flush=True)
     run_loop(ctx, clock, a.out, delay, a.ticks, recorder, paper)
     return 0
 

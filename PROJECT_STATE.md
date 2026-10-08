@@ -120,6 +120,11 @@ time-of-day rules. No price levels on cards. Dashboard MVP before live feed.
   dashboard page `app/pages/1_Paper_trading.py`. ORB on 83 cached days:
   net -29% after costs (unoptimised sample).
 
+### Short side + restart resume + day report (DECISIONS #30, 2026-10-08)
+- Simulated broker trades both directions; ORB shorts breakdowns; scanner adds the top 15 down-movers
+- Live paper runs recommendation (long) + ORB (long/short); a restarted worker resumes the day's positions with their stops/targets
+- reports/paper_<day>.md lists each trade's entry, stop, target, exit and net P&L
+
 ### Tests
 487 passing, 1 skipped (2026-09-29, paper/backtest branch; 417 before it) locally (`.venv`, Python 3.13, pytest). `growwapi` is not
 installed in the venv; adapter tests use `tests/fakes/fake_groww.py`.

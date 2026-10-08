@@ -114,11 +114,20 @@ scalp (1-min) + day (5/15-min) modes (DECISIONS.md #11).
 - Day 1 recorded 09:20-12:24 only (with a 09:28-09:31 gap); strategy m16
 - [ ] AARTIPHARM prep failed on a truncated Groww JSON response — retry prep on JSON errors?
 
+## Short side + resume + day report (DECISIONS #30) ✅ build 2026-10-08
+- [x] Broker shorts (signed positions, mirrored brackets, margin, square-off buy-back), trade direction/stop/target in the ledger
+- [x] ORB long + short; recommendation + ORB side by side in live paper; resume the day's run after a restart
+- [x] Short-side universe (scan.short_top_n down-movers), excluded from research snapshots
+- [x] reports/paper_<day>.md (worker stop + live_day.ps1 label phase); live_day.ps1 runs the worker with --paper
+- [ ] 2026-10-09 first live paper day with shorts: check logs/worker_*.log, dashboard Paper trading, reports/paper_2026-10-09.md
+- [ ] Backtest ORB long+short over data/replay_1y and data/universe_1y (compare with the long-only #29 run)
+- [ ] Decide whether the recommendation engine gets a short side (needs its own pre-registered tests)
+
 ## Paper trading + backtesting (DECISIONS #29) ✅ build, branch feature/paper-backtest-broker
 - [x] Broker interface; BacktestBroker + PaperBroker (simulated only); fills, Groww cost model, limits, 15:15 square-off
 - [x] SQLite ledger, TradingSession, Strategy base, performance metrics, backtest runner + cache/fetch-once
 - [x] ORB sample strategy; RecommendationStrategy replaces simulator.py; worker --paper; dashboard Paper trading page
 - [ ] First live `--paper` session: check tick fills, ledger growth, dashboard refresh
-- [ ] Restore open simulated positions after a worker restart (currently a new run starts)
+- [x] Restore open simulated positions after a worker restart (DECISIONS #30)
 - [ ] Paper fills for symbols without live ticks (fall back to bars when a symbol has no feed)
 - [ ] Run paper_replay --all on data/replay_1y with the new broker (M10b baseline)

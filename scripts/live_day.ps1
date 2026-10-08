@@ -1,7 +1,7 @@
 # Live research day - M14 (DECISIONS #24). Run by Windows Task Scheduler.
 #   -Phase worker : 08:40, live worker until 15:30 (records data/research/live/snapshots)
-#   -Phase label  : 15:45, fetch the day's 1-min bars, label outcomes, write reports
-# Read-only market data; never places orders. Logs: logs\<phase>_<date>.log
+#   -Phase label  : 15:45, paper day report, fetch the day's 1-min bars, label outcomes, write reports
+# Read-only market data; never places orders (paper trading is simulated in-process). Logs: logs\<phase>_<date>.log
 param([Parameter(Mandatory)][ValidateSet("worker", "label")][string]$Phase)
 
 $repo = Split-Path -Parent $PSScriptRoot
@@ -20,8 +20,9 @@ function Run([string[]]$argv) {
 }
 
 if ($Phase -eq "worker") {
-    Run @("-m", "src.app.worker")
+    Run @("-m", "src.app.worker", "--paper")   # + paper trading, simulated only (DECISIONS #30)
 } else {
+    Run @("scripts\paper_day_report.py", "--day", $day)   # paper P&L (DECISIONS #30)
     Run @("scripts\label_outcomes.py", "--day", $day, "--fetch")
     Run @("scripts\evaluate.py", "--labeled", "data\research\live\labeled", "--from", $day, "--to", $day,
           "--title", "Live research $day (one day: description, not evidence)", "--out", "reports\live_$day.md")

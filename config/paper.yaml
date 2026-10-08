@@ -3,8 +3,14 @@
 # ever reaches Groww (no live broker exists). Off by default. These are
 # starting values to be *evaluated*, not optimised.
 
-enabled: false                # live paper session in the worker (also: worker --paper)
-strategy: recommendation      # live paper strategy: recommendation | orb
+enabled: false                # live paper session in the worker (also: worker --paper;
+                              # scripts/live_day.ps1 passes --paper since 2026-10-09, DECISIONS #30)
+strategy: recommendation      # single strategy (used when `strategies` is absent)
+# DECISIONS #30: run several side by side, each its own broker + ledger run
+# (`paper:<day>:<name>`, resumed after a worker restart). recommendation is
+# long-only (the engine scores long setups); orb trades both directions.
+strategies: [recommendation, orb]
+report_dir: reports           # reports/paper_<day>.md written when the worker stops
 mode: DAY                     # which recommendation list feeds entries (SCALP | DAY)
 quantity: 10                  # recommendation strategy: fixed shares per trade
 
@@ -21,6 +27,7 @@ broker:                       # simulated broker, shared by backtest and paper m
   slippage_bps: 5             # against us on market and stop fills
   square_off: "15:15"         # close everything at the last price; no entries after
   exchange: NSE               # cost model rates (config/costs.yaml)
+  allow_short: true           # DECISIONS #30: intraday (MIS) shorts; full notional blocked as margin
 
 entry:                        # recommendation strategy entry policy
   minimum_category: CANDIDATE # STRONG_CANDIDATE > CANDIDATE > WATCH > NEUTRAL
@@ -44,3 +51,4 @@ orb:                          # sample Opening Range Breakout (src/paper/strateg
   max_position_value: 25000
   max_range_pct: 3.0          # skip days whose opening range is wider
   last_entry: "14:30"
+  allow_short: true           # DECISIONS #30: close below the range low -> short, stop ~range high

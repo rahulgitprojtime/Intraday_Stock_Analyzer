@@ -39,7 +39,8 @@ def ctx_with_bars(tmp_path, until=time(9, 31)):
 
 
 def raw(tmp_path, **kw):
-    return load_yaml("paper.yaml") | {"ledger": str(tmp_path / "paper.sqlite")} | kw
+    return load_yaml("paper.yaml") | {"ledger": str(tmp_path / "paper.sqlite"),
+                                      "strategies": None, "report_dir": None} | kw
 
 
 def test_orb_live_paper_fills_on_the_next_tick_and_squares_off(tmp_path):
@@ -76,8 +77,42 @@ def test_recommendation_live_paper_journals_the_entry(tmp_path):
     assert events[0]["replay_or_live"] == "live" and events[0]["stop_method"] == "pct_fallback"
 
 
-def test_a_restart_starts_a_new_run_and_keeps_the_old_one(tmp_path):
+def test_a_restart_resumes_the_days_run_with_its_open_position(tmp_path):
     ctx = ctx_with_bars(tmp_path)
-    build_live_paper(ctx, DAY, raw(tmp_path, strategy="orb"), now=at(9, 0)).stop(DAY)
-    build_live_paper(ctx, DAY, raw(tmp_path, strategy="orb"), now=at(9, 40)).stop(DAY)
-    assert len(Ledger(tmp_path / "paper.sqlite").runs()) == 2
+    first = build_live_paper(ctx, DAY, raw(tmp_path, strategy="orb"), now=at(9, 0))
+    first.on_minute(ctx, at(9, 31), {})
+    ctx.feed_store.ltp["AAA"] = 101.7
+    first.pump(at(9, 31, 3))
+    stop_ = {o.tag: o.trigger_price for o in first.session.broker.open_orders()}["STOP_LOSS"]
+    first.session.ledger.commit()                          # the worker dies here (no stop())
+
+    again = build_live_paper(ctx, DAY, raw(tmp_path, strategy="orb"), now=at(9, 40))
+    assert again.resumed == ["AAA"]
+    b = again.session.broker
+    assert b.positions()["AAA"].quantity > 0
+    assert {o.tag for o in b.open_orders()} == {"STOP_LOSS", "TARGET"}
+    again.on_minute(ctx, at(9, 41), {})                    # no second ORB entry for AAA
+    assert [o.tag for o in b.open_orders() if o.opening] == []
+    ctx.feed_store.ltp["AAA"] = stop_ - 0.5
+    assert again.pump(at(9, 41, 5)) == 1                   # the re-armed stop fills
+    again.stop(DAY)
+    db = Ledger(tmp_path / "paper.sqlite")
+    [run] = db.runs()
+    [t] = db.trades(run["run_id"])
+    assert (t["exit_tag"], t["direction"], t["stop_loss"]) == ("STOP_LOSS", "LONG", stop_)
+
+
+def test_multi_paper_runs_both_strategies_and_writes_the_day_report(tmp_path):
+    from src.app.paper_live import build_live_papers
+    ctx = ctx_with_bars(tmp_path)
+    cfg = raw(tmp_path, strategies=["recommendation", "orb"],
+              report_dir=str(tmp_path / "reports"))
+    multi = build_live_papers(ctx, DAY, cfg, now=at(9, 0))
+    assert multi.run_ids == [f"paper:{DAY}:recommendation", f"paper:{DAY}:orb"]
+    multi.on_minute(ctx, at(9, 31), {})
+    ctx.feed_store.ltp["AAA"] = 101.7
+    multi.sessions[1].pump(at(9, 31, 3))
+    assert multi.open_symbols() == {"AAA"}
+    multi.stop(DAY)
+    text = (tmp_path / "reports" / f"paper_{DAY}.md").read_text(encoding="utf-8")
+    assert "## ORB" in text and "## RECOMMENDATION" in text and "square-off" in text

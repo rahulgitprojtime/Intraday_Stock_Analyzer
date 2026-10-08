@@ -69,7 +69,13 @@ scan:
   calls_per_minute: 200      # quote budget (Groww Live Data limit is 300/min total)
   stats_sessions: 20
   prep_calls_per_minute: 150 # morning daily-stats pacing (200 back-to-back measured OK)
-  long_only: true
+  long_only: true            # the LONG universe (top_n) stays up-movers only
+  # DECISIONS #30 short side (paper ORB shorts): the top `short_top_n`
+  # down-movers (below the previous close, mirrored movement score) are
+  # added to the universe after the longs; `short_movers_per_cycle` of them
+  # are quoted each minute. Research snapshots exclude short-only names.
+  short_top_n: 15
+  short_movers_per_cycle: 30
   # M13 fast cycle (DECISIONS #23), once a minute: batch OHLC + LTP for the
   # whole pool (50 per call; feed prices used where subscribed), movement
   # pre-rank, then parallel quotes (volume, VWAP) for the top movers only.

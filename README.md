@@ -51,10 +51,12 @@ python scripts/scan_now.py --top 25   # market-wide volume scan, once (read-only
 python -m src.app.worker --paper      # start by ~09:00: daily stats for 1,643 stocks first
 ```
 
-With `scan.enabled` in `config/universe.yaml` (default), the live universe
-is the top 50 up-movers by volume change across all NSE EQ intraday stocks
-priced 250-2500, plus the top 15 down-movers for paper shorts, re-picked
-every minute; the curated `symbols` list is used only by replays.
+With `scan.enabled` in `config/universe.yaml` (default), NIFTY + BANK NIFTY
+sentiment picks the side each minute (bullish → rising stocks, bearish →
+falling stocks, neutral → both) and every NSE EQ intraday stock priced
+250-2500 that moves that way on unusual volume joins the universe — no
+fixed count, only the Groww API budget as a ceiling. The curated `symbols`
+list is used only by replays.
 
 On market days Windows Task Scheduler runs `scripts/live_day.ps1 -Phase
 worker` at 08:40 and `-Phase label` at 15:45 (reports in `reports/`).
@@ -86,8 +88,9 @@ python scripts/backtest.py --strategy orb --cache data/replay_1y --from 2026-06-
 python scripts/backtest.py --strategy orb --symbols RELIANCE INFY --from 2026-09-01 --to 2026-09-25 --cache data/replay_1y --fetch
 # Replay the recommendation engine as a strategy (journal + daily report + ledger)
 python scripts/paper_replay.py --replay data/replay --days 2026-09-25
-# Live paper trading during market hours (strategies from config/paper.yaml:
-# recommendation long-only + ORB long/short; resumes the day after a restart)
+# Live paper trading during market hours (config/paper.yaml: scalp = 1-min
+# price action, trend = 5-min setups + indicators; long when the market is
+# bullish, short when bearish, no trades when neutral; resumes after a restart)
 python -m src.app.worker --paper
 # Day report: every trade with entry, stop, target, exit and net P&L
 python scripts/paper_day_report.py --day 2026-10-09      # -> reports/paper_<day>.md

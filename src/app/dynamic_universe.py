@@ -16,30 +16,26 @@ from datetime import date, datetime
 
 class DynamicUniverse:
     def __init__(self, scanner, active_set, resolve: Callable, day: date, feed=None,
-                 news_aliases: dict | None = None, pinned: Callable[[], set] = set,
-                 short_set=None) -> None:
+                 news_aliases: dict | None = None, pinned: Callable[[], set] = set) -> None:
         self.scanner, self.active_set, self.resolve, self.day = scanner, active_set, resolve, day
         self.feed, self.news_aliases, self.pinned = feed, news_aliases or {}, pinned
-        self.short_set = short_set           # DECISIONS #30: top-N down-movers, added after the longs
         self._instruments: dict = {}
         self._ranked: dict = {}
-        self._short_only: set = set()
+        self._direction: dict = {}
 
     def short_only(self) -> set:
-        """Symbols in the universe only because of the short-side scan."""
-        return set(self._short_only)
+        """Symbols followed as falling stocks (DECISIONS #31); research skips them."""
+        return {s for s, d in self._direction.items() if d == "SHORT"}
 
     def refresh(self, ctx, now: datetime) -> list[str]:
         ranked = self.scanner.ranked(now)
         self._ranked = {c.symbol: c for c in ranked}
+        for c in ranked:
+            self._direction[c.symbol] = getattr(c, "direction", "LONG")
+        if hasattr(self.scanner, "capacity"):          # live: no top-N, only the API budget
+            self.active_set.top_n = self.scanner.capacity()
         active = self.active_set.update(now, ranked, set(self.pinned()))
-        if self.short_set is not None and hasattr(self.scanner, "ranked_short"):
-            down = self.scanner.ranked_short(now)
-            for c in down:
-                self._ranked.setdefault(c.symbol, c)
-            shorts = self.short_set.update(now, down, set())
-            self._short_only = set(shorts) - set(active)
-            active = active + [s for s in shorts if s not in active]
+        self._direction = {s: d for s, d in self._direction.items() if s in active}
         errors: list[str] = []
         current = [i.trading_symbol for i in ctx.stocks]
         if set(active) != set(current):
@@ -72,6 +68,7 @@ class DynamicUniverse:
         for inst in ctx.stocks:
             c = self._ranked.get(inst.trading_symbol)
             active.append({"symbol": inst.trading_symbol,
+                           "direction": self._direction.get(inst.trading_symbol, "LONG"),
                            "volume_change": round(c.volume_change, 4) if c else None,
                            "day_change_pct": round(c.day_change_pct, 4) if c else None,
                            "scan_score": round(c.score, 2) if c else None})

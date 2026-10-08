@@ -3,7 +3,7 @@
 Open tasks only; finished work is in `PROJECT_STATE.md` and `DECISIONS.md`.
 
 ## Live operations
-- [ ] 2026-10-09 first paper day with shorts: check `logs/worker_*.log`, the Paper trading page and `reports/paper_2026-10-09.md`
+- [ ] 2026-10-09 first day of sentiment-led scalp + trend: check the sentiment and universe size in `data/scans/`, `logs/worker_*.log`, `reports/paper_2026-10-09.md`
 - [ ] Worker must survive network loss: retry auth/REST with backoff instead of exiting (29 Sep: DNS failure at 12:24, relaunches failed at login until 13:45)
 - [ ] Find the cause of the 0xC000013A kills right after NATS feed disconnects ("nats: unexpected EOF", 09:12 and 09:28 on 29 Sep)
 - [ ] Retry daily prep on truncated Groww JSON responses (AARTIPHARM, 29 Sep)
@@ -12,7 +12,8 @@ Open tasks only; finished work is in `PROJECT_STATE.md` and `DECISIONS.md`.
 
 ## Paper trading
 - [ ] Paper fills for symbols without live ticks (fall back to bars)
-- [ ] Backtest ORB long + short over `data/replay_1y` and `data/universe_1y`; compare with the long-only run (#29)
+- [ ] Backtest scalp + trend over `data/universe_1y` (needs NIFTY + BANKNIFTY bars for the sentiment); tune nothing on the full set (#24 splits)
+- [ ] Check how often sentiment is NEUTRAL (no trades) and how large the universe gets at the open
 - [ ] Run `paper_replay --all` on `data/replay_1y` with the simulated broker (recommendation baseline)
 - [ ] Multi-day paper report: equity curve, drawdown, breakdowns with sample sizes
 

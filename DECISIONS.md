@@ -77,7 +77,7 @@ market scan uses Groww daily candles directly (one call, ≤ 180 days, #21).
 ### #11 — Long-only momentum candidates; no price levels on cards (2026-09-25, updated 2026-10-08)
 - The recommendation engine, its scoring and the research loop look for
   LONG/upward-momentum candidates only. Shorts exist only in the paper
-  simulator (ORB, #30); a short-side engine would be a new, untested model.
+  strategies (#30, #31); a short-side engine would be a new, untested model.
 - Named deterministic setups (ORB, VWAP pullback/reclaim, PDH breakout,
   narrow CPR, gap-and-go, EMA9/20 pullback, RS vs NIFTY, 1-min momentum
   burst) plus time-of-day rules. Two modes: SCALP (1-min) and DAY (5/15-min).
@@ -167,17 +167,19 @@ lunch penalty removed, #27).
 - Volume change = today's volume ÷ (20-day avg × the market's normal share
   of the day traded by now; `config/market_volume_curve.json`, from 6,025
   real stock-days, rebuilt by `scripts/build_volume_curve.py`).
-- Long universe: up-movers only, top 50 (min stay 10 min; pinned symbols
-  never drop). Short-side movers are added for the paper simulator (#30).
+- Which stocks, and how many: #31 (market sentiment picks the side; every
+  qualifying stock joins; the API budget is the only ceiling). Min stay 10
+  min; open paper positions are pinned and never drop.
 - Each minute's scan is appended to `data/scans/<date>.jsonl`. The curated
   `universe.yaml symbols` list serves replays and scan-disabled runs only.
 
 ### #23 — Fast scan cycle (2026-09-28)
 Once a minute: batch OHLC for the pool (50/call), feed prices where
 subscribed + batch LTP for the rest, movement pre-rank, then parallel quotes
-(4 workers, shared limiter 8 calls/s < Groww's 10/s) for the top 100 up-
-movers (+30 down-movers, #30). Quotes older than 180 s drop out. Every SDK
-call has a 10 s timeout. Total stays under the 300 calls/min cap.
+(4 workers, shared limiter 8 calls/s < Groww's 10/s) for the strongest
+movers in the market's direction, as many as the minute's API budget
+allows (#31). Quotes older than 180 s drop out. Every SDK call has a 10 s
+timeout. Total stays under the 300 calls/min cap.
 
 ### #26 — Whole-market history; price band 250..2500 (2026-09-28, user directive)
 - The price band applies to the live pool, each minute's ranking and the
@@ -261,7 +263,8 @@ testable yet: first vs later breakout, pullback depth from the day high.
   and `PaperBroker` (live Groww ticks). Guards in
   `tests/test_broker_interface.py`.
 - The same `Strategy` class runs in backtest and paper mode
-  (`TradingSession`). Strategies: `recommendation` (#20), `orb` (#30).
+  (`TradingSession`). Live strategies: `scalp`, `trend` (#31); `recommendation`
+  (#20) and `orb` (#30) remain for backtests.
 - Fills: market → next bar open (backtest) / next live tick (paper) +
   slippage; limit → only when price trades through it, no slippage; stop →
   touch triggers, fills at trigger or a worse gap open + slippage; stop
@@ -286,15 +289,57 @@ testable yet: first vs later breakout, pullback depth from the day high.
   mirror (STOP buy above, LIMIT buy below); square-off buys back. A short
   blocks its full notional as margin (MIS leverage ignored). Trades record
   direction, stop_loss, target.
-- ORB (`orb.allow_short`): first close above the 15-min range high → long,
-  below the low → short; stop at about the other side of the range, target
-  2R, ₹500 risk per trade; one attempt per symbol per day.
-- Universe: the top 15 down-movers (mirrored movement score) are added after
-  the long universe (`scan.short_top_n`) and excluded from research.
-- Live: `paper.yaml strategies: [recommendation, orb]`, one broker + one
-  ledger run each (`paper:<day>:<strategy>`). A restarted worker RESUMES the
-  run: positions, cash, closed trades and open stop/target orders are rebuilt
-  from the ledger; open positions stay subscribed.
+- ORB (`orb.allow_short`, backtests): first close above the 15-min range
+  high → long, below the low → short; stop about the other side of the
+  range, target 2R; one attempt per symbol per day.
+- Live strategies (`paper.yaml strategies`, now #31) each get their own
+  broker + ledger run (`paper:<day>:<strategy>`). A restarted worker RESUMES
+  the run: positions, cash, closed trades and open stop/target orders are
+  rebuilt from the ledger; open positions stay subscribed.
 - `reports/paper_<day>.md` (worker stop + 15:45 task) lists each trade's
   entry, stop, target, exit, reason and net P&L. `live_day.ps1` starts the
   worker with `--paper`.
+
+### #31 — Sentiment-led universe; trade only clear setups; scalps on price action (2026-10-08, user directive)
+- User: "pick rising or falling stocks based on market sentiment of nifty
+  and banknifty, no hardcoded values of 50 or 15 stocks; trade ONLY if you
+  see a clear setup, no minimum number of trades; scalping on price action
+  only; for trades lasting > 10-15 min use the existing indicators".
+- Sentiment (`src/market/sentiment.py`, `universe.yaml scan.sentiment`): per
+  index (NIFTY, BANK NIFTY) three votes from today's 1-min closes — change
+  vs previous close (index prev close from a morning prep), change since the
+  open, last vs 15 min ago — each +1/−1/0 (0 inside ±0.1%). BULLISH when
+  both indices score ≥ +1 and the total ≥ +3; BEARISH mirrored; otherwise
+  NEUTRAL. Computed each minute by the worker; in `state.json` as
+  `sentiment` (additive, schema unchanged).
+- Universe (`scan.qualify`): BULLISH → stocks up ≥ 0.5% vs the previous
+  close and beating NIFTY; BEARISH → down ≥ 0.5% and lagging NIFTY;
+  NEUTRAL → both. Each also needs volume ≥ 1.5x normal for the time of day
+  and the price/liquidity filters. Every qualifying stock joins — no top-N.
+  The ceiling is Groww's budget (`api_calls_per_minute` 280 of the 300/min
+  cap): each followed stock costs a quote + a candle refresh per minute, so
+  capacity = (280 − pool batches − index candles) / 2, recomputed each
+  minute. Falling (SHORT) names are left out of research snapshots; on
+  bearish days the long-only research panel is therefore thin.
+  Historical research replays keep the pre-registered top-50 up-mover
+  selection (`replay_top_n`, #26).
+- Trading (both strategies): BULLISH → longs only, BEARISH → shorts only,
+  NEUTRAL → no new trades. Only stocks moving with the market (long: above
+  the previous close; short: below). No minimum trade count. Shorts run the
+  long rules on a mirrored chart (2K − price around the previous close), so
+  one rule set serves both sides. ₹500 risk per trade, ≤ ₹25k per position.
+- `scalp` (1-min, price action only — no indicators): TIGHT_BREAKOUT (strong
+  bar closing out of a tight 6-bar base at a new 20-bar high, above the
+  day's open; stop below the base) or HIGHER_LOW (higher high, ≥ 2-bar
+  pullback holding above the last swing low, close through the prior bar's
+  high; stop below the pullback). Target 1.5R, time exit after 15 min,
+  ≤ 2 trades per stock per day, entries 09:25-15:00.
+- `trend` (trades meant to last > 10-15 min): a FRESH trigger of ORB15,
+  VWAP_RECLAIM, VWAP_PULLBACK, EMA_PULLBACK or PDH on the 5-min bar that just
+  closed, confirmed on 1-min bars by close > VWAP, EMA9 > EMA20, ADX ≥ 20,
+  RSI 50-75 and Supertrend up (all required; warming up = no trade). Stop
+  1 x the 5-min average true range, target 2R, no time exit, entries
+  09:30-14:30.
+- All thresholds are starting values, unvalidated. Charges are about ₹56 per
+  round trip on a ₹25k position, a large share of a 1.5R scalp; backtest
+  before trusting any of it.

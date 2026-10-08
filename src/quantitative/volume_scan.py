@@ -61,6 +61,66 @@ class ScanCandidate:
     volume: int
     score: float = 0.0            # M12 pre-rank: movement/volume/liquidity from quotes
     parts: dict | None = None
+    direction: str = "LONG"       # LONG: rising stock; SHORT: falling stock (#31)
+
+
+@dataclass(frozen=True)
+class QualifyRules:
+    """Live universe membership (DECISIONS #31): every stock that clears
+    these joins, however many; there is no top-N. The only ceiling is the
+    Groww API budget (MarketScanner.capacity)."""
+
+    min_move_pct: float = 0.5          # |change vs previous close| in the direction
+    min_volume_change: float = 1.5     # today's volume vs normal for this time of day
+    require_rs_vs_nifty: bool = True   # long: beating NIFTY; short: lagging it
+
+    @classmethod
+    def from_dict(cls, d: dict | None) -> QualifyRules:
+        d = d or {}
+        return cls(float(d.get("min_move_pct", 0.5)), float(d.get("min_volume_change", 1.5)),
+                   bool(d.get("require_rs_vs_nifty", True)))
+
+
+def moves_with(change_pct: float, direction: str, rules: QualifyRules,
+               index_change_pct: float | None) -> bool:
+    """Price filter shared by the quote pre-pass and the final ranking."""
+    sign = 1 if direction == "LONG" else -1
+    if sign * change_pct < rules.min_move_pct:
+        return False
+    if rules.require_rs_vs_nifty and index_change_pct is not None:
+        return sign * (change_pct - index_change_pct) > 0
+    return True
+
+
+def qualify(quotes: Sequence[dict], stats: dict, filters: ScanFilters, rules: QualifyRules,
+            at: time, curve: Sequence[float], directions: Sequence[str],
+            index_change_pct: float | None) -> list[ScanCandidate]:
+    """Stocks moving with the market (`directions` from the sentiment) on
+    unusual volume, best pre-score first; each tagged with its direction."""
+    frac = expected_fraction(curve, at)
+    out = []
+    for q in quotes:
+        st = stats.get(q["symbol"])
+        if st is None or not st.avg_volume or not st.prev_close:
+            continue
+        if (not filters.price_ok(q["last_price"])
+                or st.avg_volume < filters.min_avg_daily_volume
+                or st.avg_traded_value < filters.min_avg_traded_value):
+            continue
+        change = (q["last_price"] / st.prev_close - 1) * 100
+        direction = next((d for d in directions
+                          if moves_with(change, d, rules, index_change_pct)), None)
+        if direction is None:
+            continue
+        vol_change = q["volume"] / (st.avg_volume * frac)
+        if vol_change < rules.min_volume_change:
+            continue
+        qq = q if q.get("at") else q | {"at": datetime.combine(date.today(), at),
+                                         "volume_change": vol_change}
+        score, parts = prescore(qq, st, curve, direction == "SHORT")
+        out.append(ScanCandidate(q["symbol"], vol_change, change, q["last_price"], q["volume"],
+                                 score, parts, direction))
+    return sorted(out, key=lambda c: (-c.score, -c.volume_change, c.symbol))
 
 
 # M12 (DECISIONS #22): the quote-computable groups, with the engine's weights

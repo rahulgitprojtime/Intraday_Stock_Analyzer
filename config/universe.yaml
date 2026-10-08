@@ -56,30 +56,39 @@ filters:
   max_spread_pct: 0.5
   max_universe_size: 200
 
-# Market-wide volume scan (M11, DECISIONS #21). When enabled, the live
-# worker's universe is the top_n stocks by volume change (today's volume
-# vs 20-day average, adjusted for time of day) among all NSE EQ-series,
-# intraday-allowed stocks that pass `filters` and trade above the previous
-# close (long-only). `symbols` above is used only when scan is disabled
-# and by replays.
+# Market-wide volume scan (DECISIONS #21, #23, #31). Each minute the live
+# worker follows EVERY stock that qualifies — there is no top-N:
+#   1. market sentiment from NIFTY + BANK NIFTY (`sentiment`) picks the side:
+#      BULLISH → rising stocks, BEARISH → falling stocks, NEUTRAL → both
+#      (shown on the dashboard; the paper strategies take no new trades);
+#   2. a stock qualifies when it moved `qualify.min_move_pct` that way vs the
+#      previous close, beats (long) / lags (short) NIFTY, and trades
+#      `qualify.min_volume_change` x its normal volume for the time of day,
+#      inside `filters` (price band, liquidity);
+#   3. the only ceiling is the Groww API budget: each followed stock costs a
+#      quote + a 1-min candle refresh per minute, so at most
+#      (api_calls_per_minute − batch and index calls) / 2 stocks.
+# `symbols` above is used only when scan is disabled and by replays.
 scan:
   enabled: true
-  top_n: 50                  # pre-ranked by quote-computable groups; full 8-group score on these (M12)
+  api_calls_per_minute: 280  # Groww Live Data cap is 300/min; 20 kept as headroom
   min_stay_minutes: 10       # a stock stays at least this long once it enters
-  calls_per_minute: 200      # quote budget (Groww Live Data limit is 300/min total)
+  qualify:
+    min_move_pct: 0.5        # |change vs previous close| in the market's direction
+    min_volume_change: 1.5   # volume vs normal for the time of day
+    require_rs_vs_nifty: true
+  sentiment:                 # src/market/sentiment.py
+    dead_band_pct: 0.1       # index moves smaller than this vote 0
+    trend_minutes: 15        # trend vote: last vs this many minutes ago
+    min_index_score: 1       # both indices must lean the same way...
+    min_total_score: 3       # ...with this combined score (of ±6)
   stats_sessions: 20
   prep_calls_per_minute: 150 # morning daily-stats pacing (200 back-to-back measured OK)
-  long_only: true            # the LONG universe (top_n) stays up-movers only
-  # DECISIONS #30 short side (paper ORB shorts): the top `short_top_n`
-  # down-movers (below the previous close, mirrored movement score) are
-  # added to the universe after the longs; `short_movers_per_cycle` of them
-  # are quoted each minute. Research snapshots exclude short-only names.
-  short_top_n: 15
-  short_movers_per_cycle: 30
-  # M13 fast cycle (DECISIONS #23), once a minute: batch OHLC + LTP for the
-  # whole pool (50 per call; feed prices used where subscribed), movement
-  # pre-rank, then parallel quotes (volume, VWAP) for the top movers only.
-  movers_per_cycle: 100
   quote_workers: 4
   max_calls_per_second: 8    # shared limiter; Groww Live Data limit is 10/s
-  quote_max_age_seconds: 180 # older quotes stop counting in the ranking
+  quote_max_age_seconds: 180 # older quotes stop counting
+  # Historical research replays only (worker --replay --scan-universe):
+  # reproduce the pre-registered top-50 up-mover selection (DECISIONS #26).
+  replay_top_n: 50
+  long_only: true
+  calls_per_minute: 200      # replay sweep pacing

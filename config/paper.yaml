@@ -6,10 +6,14 @@
 enabled: false                # live paper session in the worker (also: worker --paper;
                               # scripts/live_day.ps1 passes --paper since 2026-10-09, DECISIONS #30)
 strategy: recommendation      # single strategy (used when `strategies` is absent)
-# DECISIONS #30: run several side by side, each its own broker + ledger run
-# (`paper:<day>:<name>`, resumed after a worker restart). recommendation is
-# long-only (the engine scores long setups); orb trades both directions.
-strategies: [recommendation, orb]
+# Strategies run side by side, each its own broker + ledger run
+# (`paper:<day>:<name>`, resumed after a worker restart, DECISIONS #30).
+# Live since 2026-10-09 (DECISIONS #31): scalp (1-min price action) and
+# trend (5-min setups + indicator confirmation). Both trade only with the
+# market sentiment (BULLISH → long, BEARISH → short, NEUTRAL → no new
+# trades) and only on a clear setup; there is no minimum number of trades.
+# recommendation and orb remain available for backtests.
+strategies: [scalp, trend]
 report_dir: reports           # reports/paper_<day>.md written when the worker stops
 mode: DAY                     # which recommendation list feeds entries (SCALP | DAY)
 quantity: 10                  # recommendation strategy: fixed shares per trade
@@ -52,3 +56,37 @@ orb:                          # sample Opening Range Breakout (src/paper/strateg
   max_range_pct: 3.0          # skip days whose opening range is wider
   last_entry: "14:30"
   allow_short: true           # DECISIONS #30: close below the range low -> short, stop ~range high
+
+scalp:                        # src/paper/strategies/scalp.py — price action only, 1-min
+  consolidation_bars: 6       # TIGHT_BREAKOUT: bars in the base
+  tight_mult: 2.5             # base range <= this x average bar range
+  body_min: 0.6               # signal bar body share of its range
+  close_zone: 0.3             # close within the top 30% of the bar
+  expansion_min: 1.2          # signal bar range >= this x average
+  range_lookback: 20          # bars for the average range
+  swing_lookback: 20          # new local high / swing structure window
+  min_bars: 10                # bars of today before any signal
+  stop_buffer: 0.1            # x average range beyond the structure
+  max_risk_mult: 4.0          # skip when the stop is wider than this x average range
+  target_r: 1.5
+  max_hold_minutes: 15        # scalps: time exit if neither stop nor target
+  risk_per_trade: 500         # rupees at the stop (before costs/slippage)
+  max_position_value: 25000
+  max_trades_per_symbol: 2
+  first_entry: "09:25"
+  last_entry: "15:00"
+
+trend:                        # src/paper/strategies/trend.py — trades > 10-15 min
+  timeframe: 5                # setups on 5-min bars
+  setups: [ORB15, VWAP_RECLAIM, VWAP_PULLBACK, EMA_PULLBACK, PDH]
+  adx_min: 20                 # confirmations on 1-min bars: VWAP, EMA9>EMA20,
+  rsi_range: [50, 75]         # ADX, RSI, Supertrend (all required)
+  stop_mult: 1.0              # x average true range of today's 5-min bars
+  min_5m_bars: 3
+  ext_mult: 1.0
+  target_r: 2.0
+  risk_per_trade: 500
+  max_position_value: 25000
+  max_trades_per_symbol: 2
+  first_entry: "09:30"
+  last_entry: "14:30"

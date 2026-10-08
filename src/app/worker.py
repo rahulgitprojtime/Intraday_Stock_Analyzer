@@ -23,6 +23,7 @@ from src.data.feed_store import FeedStore
 from src.data.models import Instrument
 from src.market.context import nifty_context
 from src.market.sector import SectorConfig, load_sector_map, sector_snapshot, stock_context
+from src.market.sentiment import SentimentConfig, market_sentiment
 from src.quantitative.in_play import InPlayConfig
 from src.quantitative.microstructure import MicroConfig, symbol_feed
 from src.recommendation.engine import SymbolInputs, evaluate_symbol, rank_recommendations
@@ -59,6 +60,9 @@ class WorkerContext:
     universe: object | None = None                       # DynamicUniverse, live scan (M11)
     bank_index: Instrument | None = None                 # BANK NIFTY (M12 market group)
     bank_sectors: frozenset = frozenset()                # sectors that also use BANK NIFTY
+    index_preps: dict = field(default_factory=dict)      # NIFTY/BANKNIFTY prev close (#31)
+    sentiment: dict = field(default_factory=dict)        # latest market sentiment (#31)
+    sentiment_cfg: object = None
 
 
 def base_context(source, stocks, index, source_name: str, demo: bool) -> WorkerContext:
@@ -73,10 +77,20 @@ def base_context(source, stocks, index, source_name: str, demo: bool) -> WorkerC
     ctx.sectors, ctx.sector_cfg = sectors, SectorConfig.from_dict(strategy.get("sector", {}))
     ctx.bank_sectors = frozenset(load_yaml("sectors.yaml").get("bank_nifty_sectors") or [])
     ctx.errors += [f"sectors.yaml: {p}" for p in problems]
+    ctx.sentiment_cfg = SentimentConfig.from_dict((load_universe().get("scan") or {})
+                                                  .get("sentiment"))
     return ctx
 
 
 def prepare(ctx: WorkerContext, day: date) -> None:
+    for inst in (ctx.index, ctx.bank_index):         # previous close for sentiment (#31)
+        if inst is None:
+            continue
+        try:
+            pr = ctx.source.prep(inst, day)
+            ctx.index_preps[inst.trading_symbol] = pr.prep if pr else None
+        except Exception as exc:        # sentiment falls back to today's open
+            ctx.errors.append(f"{inst.trading_symbol}: prep failed: {exc}")
     for inst in ctx.stocks:
         try:
             ctx.preps[inst.trading_symbol] = ctx.source.prep(inst, day)
@@ -129,13 +143,15 @@ def run_tick(ctx: WorkerContext, as_of: datetime, generated_at: datetime) -> dic
             errors.append(f"{ctx.index.trading_symbol}: {exc}")
     market = nifty_context(index_bars, as_of, ctx.stale_after_seconds,
                            ctx.engine_cfg.market_ramp_pct)
-    bank_ctx = None
+    bank_ctx, bank_bars = None, []
     if ctx.bank_index is not None:
         try:
-            bank_ctx = nifty_context(ctx.source.minute_candles(ctx.bank_index, as_of), as_of,
-                                     ctx.stale_after_seconds, ctx.engine_cfg.market_ramp_pct)
+            bank_bars = ctx.source.minute_candles(ctx.bank_index, as_of)
+            bank_ctx = nifty_context(bank_bars, as_of, ctx.stale_after_seconds,
+                                     ctx.engine_cfg.market_ramp_pct)
         except Exception as exc:            # BANK NIFTY missing → the part drops out
             errors.append(f"BANKNIFTY: {exc}")
+    ctx.sentiment = _sentiment(ctx, index_bars, bank_bars)
     by_mode: dict = {m: [] for m in MODES}
     excluded, in_play, freshest = [], 0, None
     bars_by: dict = {}
@@ -197,10 +213,25 @@ def run_tick(ctx: WorkerContext, as_of: datetime, generated_at: datetime) -> dic
         "universe_count": len(ctx.stocks),
         "errors": errors,
         "feed": _feed_block(ctx, snap),
+        "sentiment": ctx.sentiment,                 # additive (#31): which side is traded
         "universe": (ctx.universe.block(ctx) if ctx.universe is not None else
                      {"source": "fixed",
                       "active": [{"symbol": i.trading_symbol} for i in ctx.stocks]}),
     }
+
+
+def _sentiment(ctx: WorkerContext, index_bars: list, bank_bars: list) -> dict:
+    """NIFTY + BANK NIFTY bias from today's closed bars (DECISIONS #31)."""
+    def entry(inst, bars):
+        prep = ctx.index_preps.get(inst.trading_symbol)
+        return ([c.close for c in bars], bars[0].open if bars else None,
+                prep.prev_close if prep else None)
+    indices = {}
+    if ctx.index is not None and index_bars:
+        indices["NIFTY"] = entry(ctx.index, index_bars)
+    if ctx.bank_index is not None and bank_bars:
+        indices["BANKNIFTY"] = entry(ctx.bank_index, bank_bars)
+    return market_sentiment(indices, ctx.sentiment_cfg or SentimentConfig())
 
 
 def write_state(path: Path, state: dict) -> None:
@@ -270,12 +301,12 @@ def _live_context() -> WorkerContext:
     ctx.watchdog = FeedWatchdog(feed, feed_cfg)
     ctx.news = _news_service([i.trading_symbol for i in stocks])
     if scanning:
-        ctx.universe = _dynamic_universe(adapter, master, scan_cfg, data_dir, feed,
+        ctx.universe = _dynamic_universe(ctx, adapter, master, scan_cfg, data_dir, feed,
                                          ctx.feed_store)
     return ctx
 
 
-def _dynamic_universe(adapter, master, scan_cfg: dict, data_dir: Path, feed, feed_store):
+def _dynamic_universe(ctx, adapter, master, scan_cfg: dict, data_dir: Path, feed, feed_store):
     """Market-wide volume scan over every NSE EQ intraday stock (M11)."""
     from src.app.dynamic_universe import DynamicUniverse
     from src.app.market_scanner import MarketScanner, ScannerConfig
@@ -287,12 +318,14 @@ def _dynamic_universe(adapter, master, scan_cfg: dict, data_dir: Path, feed, fee
         adapter, master.scan_universe(),
         ScanFilters.from_config(f, bool(scan_cfg.get("long_only", True))),
         cfg, load_market_curve(), data_dir / "cache", data_dir / "scans",
-        ltp_source=lambda: _feed_prices(feed_store))
-    return DynamicUniverse(scanner, ActiveSet(cfg.top_n, cfg.min_stay_minutes), master.resolve,
-                           date.today(), feed=feed,
-                           news_aliases=load_yaml("news.yaml").get("aliases") or {},
-                           short_set=ActiveSet(cfg.short_top_n, cfg.min_stay_minutes)
-                           if cfg.short_top_n else None)
+        ltp_source=lambda: _feed_prices(feed_store),
+        sentiment=lambda: ctx.sentiment,                      # which side to scan (#31)
+        worker_calls=lambda: (int(ctx.index is not None) + int(ctx.bank_index is not None)
+                              + len(ctx.sector_indices), len(ctx.stocks)))
+    # Size set from the API budget every minute (scanner.capacity), no top-N (#31).
+    return DynamicUniverse(scanner, ActiveSet(scanner.capacity(), cfg.min_stay_minutes),
+                           master.resolve, date.today(), feed=feed,
+                           news_aliases=load_yaml("news.yaml").get("aliases") or {})
 
 
 def _feed_prices(store) -> dict[str, float]:
@@ -323,7 +356,7 @@ def _replay_universe(root: Path, day: date):
                                                     bool(scan_cfg.get("long_only", True))),
                             load_market_curve())
     cfg = ScannerConfig.from_dict(scan_cfg)
-    return DynamicUniverse(scanner, ActiveSet(cfg.top_n, cfg.min_stay_minutes), inst, day)
+    return DynamicUniverse(scanner, ActiveSet(cfg.replay_top_n, cfg.min_stay_minutes), inst, day)
 
 
 def _news_service(symbols: list[str]):

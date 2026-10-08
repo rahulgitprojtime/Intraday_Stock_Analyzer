@@ -3,13 +3,15 @@ from datetime import date, datetime, time, timedelta
 
 from src.app.market_scanner import MarketScanner, ScannerConfig
 from src.data.models import Candle, Exchange, Instrument, Quote, Segment
-from src.quantitative.volume_scan import ScanFilters
+from src.quantitative.volume_scan import QualifyRules, ScanFilters
 from src.utils.config import load_universe
 
 TODAY = date(2026, 9, 28)
 NOW = datetime(2026, 9, 28, 12, 22)
 CURVE = [(i + 1) / 375 for i in range(375)]
 FILTERS = ScanFilters(20.0, 500_000, 5e7, long_only=True)
+LOOSE = QualifyRules(min_move_pct=0.5, min_volume_change=0.0, require_rs_vs_nifty=False)
+BULL = lambda: {"bias": "BULLISH", "nifty_change_pct": 0.2}      # noqa: E731
 
 
 def inst(sym):
@@ -42,18 +44,21 @@ class FakeAdapter:
                      last - 100, last - 100)
 
 
-def scanner(tmp_path, adapter, syms=("AAA", "BBB", "CCC", "THIN"), sleeps=None):
-    cfg = ScannerConfig(top_n=2, min_stay_minutes=10, calls_per_minute=200, stats_sessions=20,
-                        prep_calls_per_minute=120)
+def scanner(tmp_path, adapter, syms=("AAA", "BBB", "CCC", "THIN"), sleeps=None, rules=LOOSE,
+            sentiment=BULL):
+    cfg = ScannerConfig(min_stay_minutes=10, calls_per_minute=200, stats_sessions=20,
+                        prep_calls_per_minute=120, qualify=rules)
     return MarketScanner(adapter, [inst(s) for s in syms], FILTERS, cfg, CURVE,
                          tmp_path / "cache", tmp_path / "scans",
-                         sleep=(sleeps.append if sleeps is not None else lambda s: None))
+                         sleep=(sleeps.append if sleeps is not None else lambda s: None),
+                         sentiment=sentiment)
 
 
 def test_config_from_universe_yaml():
     c = ScannerConfig.from_dict(load_universe()["scan"])
-    assert (c.top_n, c.min_stay_minutes, c.calls_per_minute, c.stats_sessions,
-            c.prep_calls_per_minute) == (50, 10, 200, 20, 150)
+    assert (c.min_stay_minutes, c.stats_sessions, c.prep_calls_per_minute,
+            c.api_calls_per_minute, c.replay_top_n) == (10, 20, 150, 280, 50)
+    assert c.qualify == QualifyRules(0.5, 1.5, True)
 
 
 def test_failed_fetches_are_never_cached_and_retried_next_time(tmp_path):
@@ -95,7 +100,7 @@ def test_sweep_round_robin_and_ranking(tmp_path):
     s.sweep_step(2, NOW)
     assert ad.quote_calls == ["AAA", "BBB", "CCC", "AAA"]           # wraps around
     ranked = s.ranked(NOW)
-    assert [c.symbol for c in ranked] == ["AAA", "BBB"]              # CCC excluded: long-only
+    assert [c.symbol for c in ranked] == ["AAA", "BBB"]              # CCC falling: market bullish
     st = s.status()
     assert (st["pool"], st["quoted"], st["full_sweeps"]) == (3, 3, 1)
 
@@ -162,12 +167,14 @@ class BatchAdapter(FakeAdapter):
         return Quote(instrument, last, 100, high, low, 100, 1_000_000, last - 100, last - 100)
 
 
-def fast_scanner(tmp_path, adapter, syms, movers=2):
-    cfg = ScannerConfig(top_n=2, min_stay_minutes=10, calls_per_minute=200, stats_sessions=20,
-                        prep_calls_per_minute=120, movers_per_cycle=movers, quote_workers=3,
-                        max_calls_per_second=1000, quote_max_age_seconds=180)
+def fast_scanner(tmp_path, adapter, syms, movers=2, sentiment=BULL, worker_calls=None):
+    """`movers` = quotes left in the API budget after the pool batches (2 calls)."""
+    cfg = ScannerConfig(min_stay_minutes=10, calls_per_minute=200, stats_sessions=20,
+                        prep_calls_per_minute=120, quote_workers=3, max_calls_per_second=1000,
+                        quote_max_age_seconds=180, api_calls_per_minute=2 + movers, qualify=LOOSE)
     return MarketScanner(adapter, [inst(s) for s in syms], FILTERS, cfg, CURVE,
-                         tmp_path / "cache", tmp_path / "scans", sleep=lambda s: None)
+                         tmp_path / "cache", tmp_path / "scans", sleep=lambda s: None,
+                         sentiment=sentiment, worker_calls=worker_calls)
 
 
 def test_cycle_quotes_only_the_top_movers(tmp_path):
@@ -221,3 +228,46 @@ def test_worker_feed_prices_skip_symbols_without_ltp():
     store = FeedStore()
     store.count_tick("NOLTP", NOW)
     assert _feed_prices(store) == {}
+
+
+def test_bearish_market_scans_only_falling_stocks_lagging_nifty(tmp_path):
+    moves = {"UP3": (103.0, 103.2, 99.8), "DN2": (98.0, 100.2, 97.9),
+             "DN1": (99.0, 100.1, 98.9), "DNX": (99.4, 100.1, 99.3)}
+    ad = BatchAdapter(moves)
+    bear = lambda: {"bias": "BEARISH", "nifty_change_pct": -0.8}       # noqa: E731
+    s = fast_scanner(tmp_path, ad, list(moves), movers=10, sentiment=bear)
+    s.cfg = ScannerConfig(**{**s.cfg.__dict__, "qualify": QualifyRules(0.5, 0.0, True)})
+    s.prepare(TODAY)
+    s.cycle(NOW, ltp={k: v[0] for k, v in moves.items()})
+    assert sorted(ad.quote_calls) == ["DN1", "DN2"]   # DNX -0.6% beats NIFTY -0.8%: not lagging
+    assert [(c.symbol, c.direction) for c in s.ranked(NOW)] == [("DN2", "SHORT"),
+                                                                ("DN1", "SHORT")]
+
+
+def test_neutral_market_scans_both_sides(tmp_path):
+    moves = {"UP3": (103.0, 103.2, 99.8), "DN2": (98.0, 100.2, 97.9)}
+    ad = BatchAdapter(moves)
+    s = fast_scanner(tmp_path, ad, list(moves), movers=10,
+                     sentiment=lambda: {"bias": "NEUTRAL", "nifty_change_pct": 0.0})
+    s.prepare(TODAY)
+    s.cycle(NOW, ltp={k: v[0] for k, v in moves.items()})
+    assert {(c.symbol, c.direction) for c in s.ranked(NOW)} == {("UP3", "LONG"), ("DN2", "SHORT")}
+
+
+def test_volume_threshold_is_the_gate_not_a_count(tmp_path):
+    ad = FakeAdapter(today_vol={"AAA": 2_000_000, "BBB": 600_000, "CCC": 3_000_000})
+    s = scanner(tmp_path, ad, syms=("AAA", "BBB", "CCC"), rules=QualifyRules(0.5, 1.5, False))
+    s.prepare(TODAY)
+    s.sweep_step(3, NOW)
+    assert [c.symbol for c in s.ranked(NOW)] == ["CCC", "AAA"]   # BBB ~1.2x normal: out
+
+
+def test_capacity_and_quote_budget_come_from_the_api_limit(tmp_path):
+    moves = {f"S{i}": (101.0, 101.5, 99.5) for i in range(120)}
+    ad = BatchAdapter(moves)
+    s = fast_scanner(tmp_path, ad, list(moves), worker_calls=lambda: (11, 40))
+    s.cfg = ScannerConfig(**{**s.cfg.__dict__, "api_calls_per_minute": 280})
+    s.prepare(TODAY)
+    assert s.batch_calls() == 6                          # 120 symbols -> 3 OHLC + 3 LTP
+    assert s.capacity() == (280 - 6 - 11) // 2           # quote + candle per followed stock
+    assert s.quote_budget() == 280 - 6 - 11 - 40

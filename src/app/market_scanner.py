@@ -25,11 +25,14 @@ from pathlib import Path
 
 from src.quantitative.volume_scan import (
     DailyStats,
+    QualifyRules,
     ScanFilters,
     daily_stats,
+    moves_with,
     prescore,
-    rank_volume_change,
+    qualify,
 )
+from src.market.sentiment import directions as bias_directions
 from src.utils.ratelimit import RateLimiter
 
 def _movement(scored: tuple[float, dict]) -> float:
@@ -42,36 +45,41 @@ STATS_LOOKBACK_DAYS = 60          # calendar days fetched to get 20 sessions (< 
 
 @dataclass(frozen=True)
 class ScannerConfig:
-    top_n: int = 25
     min_stay_minutes: float = 10
-    calls_per_minute: float = 200
+    calls_per_minute: float = 200        # sweep_step pacing (replay/tests)
     stats_sessions: int = 20
     prep_calls_per_minute: float = 150
-    movers_per_cycle: int = 100          # M13: quoted for volume each minute
     quote_workers: int = 4
     max_calls_per_second: float = 8      # Groww Live Data limit is 10/s
     quote_max_age_seconds: float = 180   # older quotes stop counting
-    short_top_n: int = 0                 # DECISIONS #30: short-side movers added to the universe
-    short_movers_per_cycle: int = 0      # down-movers quoted each minute (0 = short side off)
+    api_calls_per_minute: float = 280    # Groww Live Data cap 300/min, minus headroom (#31)
+    replay_top_n: int = 50               # historical research replays only (#26, pre-registered)
+    qualify: QualifyRules = QualifyRules()
 
     @classmethod
     def from_dict(cls, d: dict) -> ScannerConfig:
-        return cls(int(d.get("top_n", 25)), float(d.get("min_stay_minutes", 10)),
+        return cls(float(d.get("min_stay_minutes", 10)),
                    float(d.get("calls_per_minute", 200)), int(d.get("stats_sessions", 20)),
-                   float(d.get("prep_calls_per_minute", 150)),
-                   int(d.get("movers_per_cycle", 100)), int(d.get("quote_workers", 4)),
+                   float(d.get("prep_calls_per_minute", 150)), int(d.get("quote_workers", 4)),
                    float(d.get("max_calls_per_second", 8)),
                    float(d.get("quote_max_age_seconds", 180)),
-                   int(d.get("short_top_n", 0)), int(d.get("short_movers_per_cycle", 0)))
+                   float(d.get("api_calls_per_minute", 280)), int(d.get("replay_top_n", 50)),
+                   QualifyRules.from_dict(d.get("qualify")))
 
 
 class MarketScanner:
     def __init__(self, adapter, instruments: list, filters: ScanFilters, cfg: ScannerConfig,
                  curve: list[float], cache_dir: str | Path, scans_dir: str | Path,
-                 sleep=_time.sleep, ltp_source: Callable[[], dict] | None = None) -> None:
+                 sleep=_time.sleep, ltp_source: Callable[[], dict] | None = None,
+                 sentiment: Callable[[], dict] | None = None,
+                 worker_calls: Callable[[], tuple[int, int]] | None = None) -> None:
         self.adapter, self.filters, self.cfg, self.curve = adapter, filters, cfg, curve
         self._sleep = sleep
         self.ltp_source = ltp_source            # live feed prices for the pool (M13)
+        self.sentiment = sentiment or (lambda: {})   # market bias + NIFTY change (#31)
+        # The worker's own calls per minute: (fixed index candles, one candle
+        # refresh per followed stock). Shares the Groww budget with the scan.
+        self.worker_calls = worker_calls or (lambda: (0, 0))
         self._limiter = RateLimiter(cfg.max_calls_per_second)
         self.instruments = {i.trading_symbol: i for i in instruments}
         self.cache_dir, self.scans_dir = Path(cache_dir), Path(scans_dir)
@@ -180,22 +188,22 @@ class MarketScanner:
                 ltp.update(self.adapter.get_ltp(missing))
             except Exception as exc:
                 errors.append(f"scan ltp: {type(exc).__name__}: {exc}")
-        moving, falling = [], []
+        sent = self.sentiment() or {}
+        dirs, nifty = bias_directions(sent.get("bias")), sent.get("nifty_change_pct")
+        moving = []
         for sym in self.pool:
             last, o, st = ltp.get(sym), ohlc.get(sym), self.stats.get(sym)
             if last is None or o is None or st is None:
                 continue
+            change = (last / st.prev_close - 1) * 100
+            d = next((d for d in dirs if moves_with(change, d, self.cfg.qualify, nifty)), None)
+            if d is None:
+                continue
             q = {"symbol": sym, "volume": 0, "last_price": last, "open": o.open,
                  "high": max(o.high, last), "low": min(o.low, last), "at": now}
-            if self.cfg.short_movers_per_cycle and last < st.prev_close:
-                falling.append((_movement(prescore(q, st, self.curve, True)), sym))
-            if self.filters.long_only and last <= st.prev_close:
-                continue
-            moving.append((_movement(prescore(q, st, self.curve)), sym))
+            moving.append((_movement(prescore(q, st, self.curve, d == "SHORT")), sym))
         top = [sym for _, sym in sorted(moving, key=lambda m: (-m[0], m[1]))]
-        top = top[: self.cfg.movers_per_cycle]
-        down = [sym for _, sym in sorted(falling, key=lambda m: (-m[0], m[1]))]
-        top += [s for s in down[: self.cfg.short_movers_per_cycle] if s not in top]
+        top = top[: self.quote_budget()]
         with ThreadPoolExecutor(max_workers=self.cfg.quote_workers) as ex:
             errors += [e for e in ex.map(lambda s: self._quote_one(s, now), top) if e]
         self._calls += len(top)
@@ -232,15 +240,28 @@ class MarketScanner:
                     if (now - q["at"]).total_seconds() <= max_age]
 
     def ranked(self, now: datetime):
-        return rank_volume_change(self._fresh_quotes(now), self.stats, self.filters, now.time(),
-                                  self.curve)
+        """Every qualifying stock in the market's direction (#31), best first."""
+        sent = self.sentiment() or {}
+        return qualify(self._fresh_quotes(now), self.stats, self.filters, self.cfg.qualify,
+                       now.time(), self.curve, bias_directions(sent.get("bias")),
+                       sent.get("nifty_change_pct"))
 
-    def ranked_short(self, now: datetime):
-        """Down-movers (below the previous close), mirrored score — DECISIONS #30."""
-        if not self.cfg.short_top_n:
-            return []
-        return rank_volume_change(self._fresh_quotes(now), self.stats, self.filters, now.time(),
-                                  self.curve, short=True)
+    # -- API budget (#31): the only limit on how many stocks are followed ---------
+
+    def batch_calls(self) -> int:
+        """OHLC + LTP batches for the pool each minute (50 symbols per call)."""
+        return 2 * -(-len(self.pool) // 50)
+
+    def quote_budget(self) -> int:
+        """Quotes this minute after the batches and the worker's own calls."""
+        fixed, stocks = self.worker_calls()
+        return max(0, int(self.cfg.api_calls_per_minute) - self.batch_calls() - fixed - stocks)
+
+    def capacity(self) -> int:
+        """Most stocks the universe can follow: each needs a quote (volume) and
+        a 1-min candle refresh per minute, after the fixed per-minute calls."""
+        fixed = self.batch_calls() + self.worker_calls()[0]
+        return max(1, (int(self.cfg.api_calls_per_minute) - fixed) // 2)
 
     def status(self) -> dict:
         with self._lock:
@@ -250,17 +271,13 @@ class MarketScanner:
                 "universe": len(self.instruments), "stats": len(self.stats)}
 
     def record(self, now: datetime, active: list[str]) -> None:
-        top = [{"symbol": c.symbol, "scan_score": round(c.score, 2),
+        top = [{"symbol": c.symbol, "direction": c.direction, "scan_score": round(c.score, 2),
                 "volume_change": round(c.volume_change, 4),
                 "day_change_pct": round(c.day_change_pct, 4), "volume": c.volume}
-               for c in self.ranked(now)[: self.cfg.top_n]]
-        short_top = [{"symbol": c.symbol, "scan_score": round(c.score, 2),
-                      "volume_change": round(c.volume_change, 4),
-                      "day_change_pct": round(c.day_change_pct, 4), "volume": c.volume}
-                     for c in self.ranked_short(now)[: self.cfg.short_top_n]]
+               for c in self.ranked(now)]
         path = self.scans_dir / f"{now.date().isoformat()}.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps({"at": now.isoformat(), "active": active, "top": top,
-                                **({"short_top": short_top} if short_top else {}),
-                                **self.status()}) + "\n")
+                                "sentiment": (self.sentiment() or {}).get("bias"),
+                                "capacity": self.capacity(), **self.status()}) + "\n")

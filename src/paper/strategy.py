@@ -20,6 +20,13 @@ class StrategyContext:
         self.as_of: datetime | None = None
         self.day: date | None = None
         self._history: dict[str, list[Bar]] = {}
+        # Previous session close per symbol: carried over from the prior day's
+        # bars (backtests); the live worker overrides it from its daily prep.
+        self.prev_close: dict[str, float] = {}
+        # Live context set by the worker each minute (DECISIONS #31):
+        # "sentiment" (market bias), "preps" (DailyPrep per symbol),
+        # "indices" (index symbols: never traded).
+        self.meta: dict = {}
 
     def bars(self, symbol: str) -> list[Bar]:
         """Today's closed bars for `symbol`, oldest first (a copy)."""
@@ -32,6 +39,8 @@ class StrategyContext:
         return self.broker.positions().get(symbol)
 
     def _reset(self, day: date) -> None:
+        if self._history:
+            self.prev_close = {s: b[-1].close for s, b in self._history.items() if b}
         self.day, self.as_of, self._history = day, None, {}
 
     def _append(self, bar: Bar) -> None:

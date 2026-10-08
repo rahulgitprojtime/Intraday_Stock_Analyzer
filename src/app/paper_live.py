@@ -88,7 +88,19 @@ class LivePaper:
         self.state = state
         cache = getattr(ctx.source, "cache", None)
         bars = []
-        for inst in ctx.stocks:
+        indices = [i for i in (getattr(ctx, "index", None), getattr(ctx, "bank_index", None))
+                   if i is not None]
+        sctx = self.session.ctx                    # what the strategies see (#31)
+        sctx.meta = {"sentiment": state.get("sentiment"),
+                     "indices": [i.trading_symbol for i in indices],
+                     "preps": {s: pr.prep for s, pr in (ctx.preps or {}).items()
+                               if pr is not None and getattr(pr, "prep", None) is not None}}
+        for sym, prep in sctx.meta["preps"].items():
+            sctx.prev_close[sym] = prep.prev_close
+        for sym, prep in (getattr(ctx, "index_preps", None) or {}).items():
+            if prep is not None:
+                sctx.prev_close[sym] = prep.prev_close
+        for inst in list(ctx.stocks) + indices:
             candles = cache.load(inst, as_of.date()) if cache is not None else \
                 ctx.source.minute_candles(inst, as_of)
             for c in candles:
@@ -180,6 +192,9 @@ def build_live_paper(ctx, day: date, raw: dict | None = None, now: datetime | No
     from src.paper.policy import PaperConfig
     from src.paper.strategies.orb import OpeningRangeBreakout
     from src.paper.strategies.recommendation import RecommendationStrategy
+    from src.paper.strategies.scalp import ScalpConfig, ScalpPriceAction
+    from src.paper.strategies.trend import IntradayTrend, TrendConfig
+    from src.market.sentiment import SentimentConfig
 
     raw = raw or load_yaml("paper.yaml")
     name = (name or strategy_names(raw)[0]).lower()
@@ -188,7 +203,13 @@ def build_live_paper(ctx, day: date, raw: dict | None = None, now: datetime | No
     broker = PaperBroker(BrokerConfig.from_dict(raw["broker"]),
                          CostModel.from_dict(load_yaml("costs.yaml")), ledger, run_id)
     holder: dict = {}
-    if name == "orb":
+    sent_cfg = SentimentConfig.from_dict((load_yaml("universe.yaml").get("scan") or {})
+                                         .get("sentiment"))
+    if name == "scalp":
+        strategy = ScalpPriceAction(ScalpConfig.from_dict(raw.get("scalp")), sent_cfg)
+    elif name == "trend":
+        strategy = IntradayTrend(TrendConfig.from_dict(raw.get("trend")), sent_cfg)
+    elif name == "orb":
         strategy = OpeningRangeBreakout.from_dict(raw["orb"])
     elif name == "recommendation":
         cfg = PaperConfig.from_dict(raw)
@@ -196,7 +217,8 @@ def build_live_paper(ctx, day: date, raw: dict | None = None, now: datetime | No
         strategy = RecommendationStrategy(cfg, lambda t: holder["live"].recs(t), _AtrView(ctx),
                                           journal, run_id, version_info(), "live")
     else:
-        raise ValueError(f"paper.yaml strategy must be recommendation or orb, got {name!r}")
+        raise ValueError("paper.yaml strategy must be scalp, trend, recommendation or orb, "
+                         f"got {name!r}")
     resuming = ledger.has_run(run_id)
     if not resuming:
         ledger.start_run(run_id, broker.mode, strategy.name, broker.cfg.starting_capital,

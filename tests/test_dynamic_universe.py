@@ -118,31 +118,35 @@ def test_run_loop_stops_scanner_even_on_error(tmp_path):
     assert scanner.stopped == 1
 
 
-def test_short_side_movers_are_added_after_the_longs_and_flagged():
+def test_universe_size_follows_scanner_capacity_and_flags_short_names():
     from types import SimpleNamespace
 
-    from src.app.dynamic_universe import DynamicUniverse
     from src.app.worker import _long_research_view
-    from src.quantitative.volume_scan import ActiveSet
 
-    cand = lambda s: SimpleNamespace(symbol=s)                        # noqa: E731
+    cand = lambda s, d: SimpleNamespace(symbol=s, direction=d)        # noqa: E731
 
     class Scanner:
-        def ranked(self, now):
-            return [cand("UPA"), cand("BOTH")]
+        cap = 2
 
-        def ranked_short(self, now):
-            return [cand("DNA"), cand("BOTH")]
+        def ranked(self, now):
+            return [cand("DNA", "SHORT"), cand("UPA", "LONG"), cand("UPB", "LONG")]
+
+        def capacity(self):
+            return self.cap
 
         def record(self, now, active):
             self.active = active
 
     inst = lambda s: SimpleNamespace(trading_symbol=s, name=s)        # noqa: E731
-    uni = DynamicUniverse(Scanner(), ActiveSet(5, 0), inst, None, short_set=ActiveSet(5, 0))
+    sc = Scanner()
+    uni = DynamicUniverse(sc, ActiveSet(99, 0), inst, None)
     ctx = SimpleNamespace(stocks=[], preps={}, news=None,
                           source=SimpleNamespace(prep=lambda i, d: None), universe=uni)
     uni.refresh(ctx, datetime(2026, 10, 9, 10, 0))
-    assert [i.trading_symbol for i in ctx.stocks] == ["UPA", "BOTH", "DNA"]
+    assert [i.trading_symbol for i in ctx.stocks] == ["DNA", "UPA"]   # capacity, not a top-N
     assert uni.short_only() == {"DNA"}
+    sc.cap = 3
+    uni.refresh(ctx, datetime(2026, 10, 9, 10, 1))
+    assert len(ctx.stocks) == 3
     state = {"modes": {"DAY": [{"symbol": "UPA"}, {"symbol": "DNA"}]}, "as_of": "x"}
     assert [r["symbol"] for r in _long_research_view(ctx, state)["modes"]["DAY"]] == ["UPA"]

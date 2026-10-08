@@ -72,11 +72,14 @@ def load_day(cache: IntradayCandleCache, symbols: Iterable[str], day: date) -> l
     return bars
 
 
-def run_day(session: TradingSession, day: date, bars: list[Bar]) -> dict:
+def run_day(session: TradingSession, day: date, bars: list[Bar],
+            prev_close: dict | None = None) -> dict:
     by_close: dict[datetime, list[Bar]] = defaultdict(list)
     for b in bars:
         by_close[b.ts + ONE_MIN].append(b)
     session.start_day(day)
+    if prev_close:                     # e.g. the live scan's daily stats (DECISIONS #31)
+        session.ctx.prev_close.update(prev_close)
     for as_of in sorted(by_close):
         session.step(as_of, by_close[as_of])
     return session.end_day(day)
@@ -84,7 +87,7 @@ def run_day(session: TradingSession, day: date, bars: list[Bar]) -> dict:
 
 def run_backtest(strategy: Strategy, days: Iterable[tuple[date, list[Bar]]],
                  cfg: BrokerConfig, costs: CostModel, *, ledger=None,
-                 run_id: str = "backtest") -> BacktestResult:
+                 run_id: str = "backtest", prev_close_for=None) -> BacktestResult:
     """`days`: (day, that day's 1-min bars for every symbol), in date order."""
     if ledger is not None:
         ledger.start_run(run_id, "BACKTEST", strategy.name, cfg.starting_capital,
@@ -93,7 +96,7 @@ def run_backtest(strategy: Strategy, days: Iterable[tuple[date, list[Bar]]],
     session = TradingSession(strategy, broker, ledger=ledger, fill_on_bars=True)
     for day, bars in days:
         if bars:
-            run_day(session, day, bars)
+            run_day(session, day, bars, prev_close_for(day) if prev_close_for else None)
     if ledger is not None:
         ledger.commit()
     return BacktestResult(run_id, strategy.name, broker.trades, session.equity_curve,

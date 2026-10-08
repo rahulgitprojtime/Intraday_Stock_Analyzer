@@ -386,5 +386,11 @@ testable yet: first vs later breakout, pullback depth from the day high.
 - Slippage unchanged (5 bps against us on market and stop fills): the 8 Oct
   stop exits were a median 5.0 bps past the stop, as configured; the larger
   ones (6-18 bps) were bars opening beyond the stop, which fill at the open.
-- Evaluated once against the #32 strategies on the validate split (#24);
-  result below.
+- Validate split (2026-07-01..08-31, 44 days, whole market), run once vs #32:
+  scalp −₹2,18,986 → −₹86,732 (2,687 → 699 trades; charges ₹1,49,119 →
+  ₹44,543; gross −₹69,867 → −₹42,188); trend −₹48,210 → −₹41,568 (583 →
+  367 trades; gross −₹15,842 → −₹18,223). Kept: it loses less, mainly by
+  trading less. Neither strategy has a gross edge, so the test split is not
+  used. 332 of 699 scalps now end on the 15-min time exit (2R and the wider
+  stop rarely resolve in 15 min). Report:
+  reports/backtest_rules33_validate_and_2026-10-08.pdf (git-ignored).

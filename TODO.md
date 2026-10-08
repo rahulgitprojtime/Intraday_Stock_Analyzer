@@ -13,8 +13,9 @@ Open tasks only; finished work is in `PROJECT_STATE.md` and `DECISIONS.md`.
 ## Paper trading
 - [ ] Paper fills for symbols without live ticks (fall back to bars)
 - [ ] Backtest scalp + trend over `data/universe_1y` (needs NIFTY + BANKNIFTY bars for the sentiment); tune nothing on the full set (#24 splits)
-- [ ] Trend: strongest-first (#32) let 3 wide-stop positions hold every slot for hours on 8 Oct — test a slot/time rule on the validate split, not on 8 Oct
-- [ ] Scalp: ~₹55 charges per round trip vs a 1.5R target on 1-min stops — 8 of 26 target hits lost net on 8 Oct; test a minimum stop/target size vs costs (pre-register)
+- [ ] Entry quality on the explore split: which scalp/trend setups and conditions have any gross edge before costs (#33 validate: both lose before charges)
+- [ ] Scalp: 15-min time exit vs 2R target + noise-floor stop — 332 of 699 validate scalps timed out; explore hold time / target together
+- [ ] Report generator (scratch reportlab script) → scripts/backtest_report.py if PDFs stay wanted (reportlab is not a project dependency)
 - [ ] Check how often sentiment is NEUTRAL (no trades) and how large the universe gets at the open
 - [ ] Run `paper_replay --all` on `data/replay_1y` with the simulated broker (recommendation baseline)
 - [ ] Multi-day paper report: equity curve, drawdown, breakdowns with sample sizes

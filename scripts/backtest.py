@@ -2,8 +2,9 @@
 
     python scripts/backtest.py --strategy orb --cache data/replay_1y --from 2026-06-01 --to 2026-09-25
     python scripts/backtest.py --strategy orb --symbols RELIANCE INFY --from 2026-09-01 --to 2026-09-25 --fetch
-    # today's live data, both live strategies (DECISIONS #31):
-    python scripts/backtest.py --strategy scalp trend --cache data/cache/intraday --from 2026-10-08 --to 2026-10-08
+    # one day of the whole market, both live strategies (DECISIONS #31):
+    python scripts/fetch_universe_history.py --first 2026-10-08 --last 2026-10-08 --out data/universe_day
+    python scripts/backtest.py --strategy scalp trend --cache data/universe_day --from 2026-10-08 --to 2026-10-08
 
 Candles are read from `<cache>/<day>/<SYMBOL>.csv` (the layout
 fetch_replay_data.py writes). `--fetch` downloads missing PAST days once
@@ -58,9 +59,15 @@ SENTIMENT_INDICES = ["NIFTY", "BANKNIFTY"]
 
 
 def prev_closes(day: date, cache_root: Path) -> dict:
-    """Previous closes from the live scan's daily stats for `day`
-    (data/cache/daily_stats_<day>.json), when present."""
+    """Previous closes for `day`: the history download's `<cache>/pools.json`
+    (fetch_universe_history.py) or the live scan's daily stats
+    (data/cache/daily_stats_<day>.json), whichever exists."""
     import json
+    pools = cache_root / "pools.json"
+    if pools.exists():
+        stats = json.loads(pools.read_text(encoding="utf-8")).get(day.isoformat()) or {}
+        if stats:
+            return {s: v["prev_close"] for s, v in stats.items() if v and v.get("prev_close")}
     for root in (cache_root, cache_root.parent, ROOT / "data" / "cache"):
         f = root / f"daily_stats_{day.isoformat()}.json"
         if f.exists():

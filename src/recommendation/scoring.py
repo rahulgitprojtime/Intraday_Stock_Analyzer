@@ -1,4 +1,4 @@
-"""M6 baseline quantitative scoring model (spec §7, §13, §15).
+"""Scoring configuration (DECISIONS #22, #25).
 
 Values come from `strategy.yaml` `engine:` — temporary engineering
 defaults, NOT claimed optimal; M10 validates them. The blend runs over

@@ -1,4 +1,4 @@
-"""Synthetic DEMO data for replay (spec §23).
+"""Synthetic DEMO data for replay (never strategy evidence).
 
 Engineering only: seeded random walks with a few engineered patterns on
 the replay day (DEMO01 gap-up with heavy volume, DEMO02 opening-range

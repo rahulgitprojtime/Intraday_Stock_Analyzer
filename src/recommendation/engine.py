@@ -1,4 +1,4 @@
-"""Recommendation engine — M6 (spec §3-§18).
+"""Recommendation engine (DECISIONS #14, #15, #22).
 
 Pure and deterministic: same inputs → same output. Uses only the candles
 it is given (sources guarantee none after `as_of`) and drops forming bars.
@@ -119,7 +119,7 @@ def profile(is_in_play: bool, best: SetupSignal | None) -> str:
 def avoid_reasons(best: SetupSignal | None, category: str) -> tuple[str, ...]:
     """Hard quality gates (DECISIONS #15): any reason → AVOID, not rankable.
     Everything else (not in play, time-of-day, extension, weak components)
-    is a soft penalty or cap on the score and stays rankable (DECISIONS #16)."""
+    is a soft penalty or cap on the score and stays rankable (DECISIONS #15)."""
     out = []
     if best is not None and best.state is SetupState.FAILED:
         out.append("best setup failed")

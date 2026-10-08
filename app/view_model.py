@@ -1,8 +1,8 @@
-"""Dashboard view model — M6 (spec §19).
+"""Dashboard view model (DECISIONS #11, #14).
 
 Stdlib only, so it is testable without Streamlit. Reads `state.json`;
 never imports `src/broker` or `src/data`. Scores rank candidates; no text
-here may claim a probability of profit (spec §14).
+here may claim a probability of profit.
 """
 
 from __future__ import annotations
@@ -127,7 +127,7 @@ def news_links(rec: dict) -> list[str]:
     """Markdown links to the real headlines behind the news check (M9)."""
     out = []
     for it in rec["qualitative"].get("items") or []:
-        title = it["title"].replace("[", "\[").replace("]", "\]")
+        title = it["title"].replace("[", r"\[").replace("]", r"\]")
         extra = it["outlets"] - 1
         more = f" +{extra} outlet{'s' if extra > 1 else ''}" if extra else ""
         out.append(f"{ARROW[it['direction']]} [{title}]({it['link']}) — "

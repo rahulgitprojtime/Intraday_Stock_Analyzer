@@ -1,11 +1,11 @@
 # Intraday Scanner
 
 Live intraday **stock recommendation dashboard** for Indian cash equities,
-using the Groww Trading API as a market-data source. Ranks liquid intraday
-candidates by a blended, explainable Recommendation Score (quantitative +
-qualitative + market/sector context + liquidity). **It never places real
-orders** (paper trading and backtests use a simulated broker only) **and
-the score is not a probability of profit.**
+using the Groww Trading API as a market-data source, plus a **paper-trading
+and backtesting simulator**. Ranks the day's liquid movers by one
+explainable score (setup, volume, movement, momentum, sector, market,
+liquidity). **It never places real orders** (paper trading and backtests use
+a simulated broker only) **and the score is not a probability of profit.**
 
 **Scope: NSE/BSE cash equity, intraday, only.** F&O (derivatives) is
 explicitly out of scope — see `DECISIONS.md` #6.
@@ -28,7 +28,7 @@ cp .env.example .env
 pytest
 ```
 
-## Running the MVP (M6)
+## Running the worker and dashboard
 
 The worker writes `data/processed/state.json` every minute; the dashboard
 only reads that file. Nothing places orders.
@@ -48,12 +48,16 @@ python -m src.app.worker --replay data/replay --day 2026-09-25 --speed 60
 python scripts/groww_smoke.py         # REST check
 python scripts/feed_smoke.py          # live feed check (~2 min)
 python scripts/scan_now.py --top 25   # market-wide volume scan, once (read-only)
-python -m src.app.worker              # start by ~09:00: daily stats for 1,643 stocks first
+python -m src.app.worker --paper      # start by ~09:00: daily stats for 1,643 stocks first
 ```
 
 With `scan.enabled` in `config/universe.yaml` (default), the live universe
-is the top 25 by volume change across all NSE EQ intraday stocks, re-picked
+is the top 50 up-movers by volume change across all NSE EQ intraday stocks
+priced 250-2500, plus the top 15 down-movers for paper shorts, re-picked
 every minute; the curated `symbols` list is used only by replays.
+
+On market days Windows Task Scheduler runs `scripts/live_day.ps1 -Phase
+worker` at 08:40 and `-Phase label` at 15:45 (reports in `reports/`).
 
 `INTRADAY_STATE=<path> streamlit run app/dashboard.py --server.port 8502`
 points a second dashboard at another state file (e.g. a replay next to
@@ -91,15 +95,16 @@ python scripts/paper_day_report.py --day 2026-10-09      # -> reports/paper_<day
 
 ## Configuration
 
-Sector confirmation (M8) uses `config/sectors.yaml`: sector → NSE index +
+Sector confirmation uses `config/sectors.yaml`: sector → NSE index +
 member stocks. Keep it in sync with `universe.yaml`; a startup check
 reports members outside the universe.
 
 All tunable behavior lives in `config/*.yaml`, not in code:
 - `settings.yaml` — storage, feed, candle timeframes.
-- `strategy.yaml` — M6 engine baseline weights, time heuristics, categories,
-  in-play scanner, indicator params.
-- `universe.yaml` — symbol universe and liquidity filters.
+- `strategy.yaml` — strategy version, group weights, time rules, categories,
+  sector / in-play / microstructure parameters.
+- `universe.yaml` — curated symbols (replays), liquidity filters, market scan.
+- `news.yaml` — headline rules and aliases.
 - `paper.yaml` — simulated broker (capital, limits, slippage, square-off),
   paper strategy, recommendation entry policy, ORB parameters, ledgers.
 - `costs.yaml` — brokerage, STT, exchange, SEBI, IPFT, GST, stamp duty.

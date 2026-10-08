@@ -1,4 +1,4 @@
-"""Microstructure from the live feed — M7 (spec 2026-09-28 §4).
+"""Microstructure from the live feed — M7 (DECISIONS #17).
 
 Pure functions over a `FeedSnapshot`: spread %, bid/ask imbalance, tick
 velocity and a 0-100 `micro_score` (SCALP only). Missing inputs are None,

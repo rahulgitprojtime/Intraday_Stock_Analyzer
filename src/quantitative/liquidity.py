@@ -1,4 +1,4 @@
-"""Liquidity — M6 (spec §12, DECISIONS #14).
+"""Liquidity — M6 (DECISIONS #14, #21).
 
 Eligibility gate from `universe.yaml` `filters` so an illiquid stock never
 ranks on a strong pattern alone. History comes from the same 1-min

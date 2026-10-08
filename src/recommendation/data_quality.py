@@ -1,4 +1,4 @@
-"""Per-symbol data quality — M6 (spec §17).
+"""Per-symbol data quality — M6 (DECISIONS #14).
 
 Critical inputs (fresh candles, prep) missing or stale → the symbol is not
 scored. Non-critical gaps are listed in `missing_inputs` and the affected

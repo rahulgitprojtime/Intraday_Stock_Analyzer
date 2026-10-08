@@ -7,12 +7,14 @@ in it efficiently. Read this file first, every session.
 
 1. `PROJECT_STATE.md` — what's built, what's in progress, current milestone.
 2. `TODO.md` — the active task list.
-3. `DECISIONS.md` — architectural decisions already made (don't re-litigate).
+3. `DECISIONS.md` — decisions in force (don't re-litigate). When a new
+   decision changes an older one, rewrite the older entry so the file never
+   contradicts itself.
 4. Only then open source files relevant to the *current* task.
 
-Do not re-read `ARCHITECTURE.md` or this file's history unless something
-structural changed. Do not paste whole files into chat/responses unless the
-user explicitly asks — prefer targeted diffs.
+Do not re-read `ARCHITECTURE.md` unless something structural changed. Do not
+paste whole files into chat/responses unless the user explicitly asks —
+prefer targeted diffs.
 
 ## Ground rules
 
@@ -30,12 +32,12 @@ user explicitly asks — prefer targeted diffs.
   `src/broker` directly — it consumes processed state).
 - **No score is a probability of profit** unless it has been statistically
   validated against walk-forward/out-of-sample data. Say so in the UI.
-- **Recommendation only — never trade.** No real order placement or
-  modification, no live broker, no order entry controls in the UI
-  (DECISIONS.md #8). Orders exist only inside the simulated brokers in
-  `src/paper/` (backtest + paper trading, DECISIONS #29), which must never
-  import `src/broker` or the SDK. Outputs are analytical categories
-  (STRONG_CANDIDATE, CANDIDATE, WATCH, NEUTRAL, AVOID), not instructions.
+- **Never send a real order.** No live broker, no order controls in the UI
+  (DECISIONS #8). Orders exist only inside the simulated brokers in
+  `src/paper/` (backtest + paper trading, long and short, DECISIONS #29/#30),
+  which must never import `src/broker` or the SDK. Recommendation outputs
+  are analytical categories (STRONG_CANDIDATE, CANDIDATE, WATCH, NEUTRAL,
+  AVOID), not instructions.
 - **No LLM for numbers.** Indicators and scores are deterministic Python.
   The LLM only structures *sourced* qualitative info; no source → 
   `NO_RELEVANT_INFORMATION`, never invented news.
@@ -43,7 +45,7 @@ user explicitly asks — prefer targeted diffs.
   until a second broker is actually being added. The `BrokerAdapter`
   interface exists because Groww integration must stay swappable/testable,
   not because we expect to add brokers soon.
-- **Use superpowers skills** (brainstorming, writing-plans, TDD, systematic debugging, verification-before-completion) where they fit; keep token use low: read state files first, targeted reads/edits only.
+- Keep token use low: read the state files first, then targeted reads/edits.
 - **Sync after each iteration**: once tests pass and state files are
   updated, commit (`M<n>: ...`) and push to `origin main`.
 - **Update tracking files as you go**: `PROJECT_STATE.md` after each

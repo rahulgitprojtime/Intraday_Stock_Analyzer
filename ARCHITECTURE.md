@@ -1,6 +1,7 @@
 # ARCHITECTURE.md
 
-Recommendation-only product (DECISIONS.md #8). Nothing here places orders.
+Recommendations + a simulated paper/backtest broker (DECISIONS #8). Nothing
+here sends an order to Groww.
 
 ## Data flow
 
@@ -14,22 +15,26 @@ src/data/           models, universe resolution, live feed worker,
                     candle engine (1-min historical base + feed LTP) -> 3/5/15m
         v
 src/indicators/     pure indicator math (EMA, VWAP, RSI, ATR, ADX, RVOL, ...)
-src/quantitative/   features -> quantitative score (deterministic)
-src/market/         market context (NIFTY in M6); regime + sector strength (M8)
+src/quantitative/   setups, in-play, groups, liquidity, microstructure,
+                    market-wide volume scan (deterministic)
+src/market/         market context (NIFTY, BANK NIFTY, regime) + sector verdicts
 src/qualitative/    Google News RSS -> deterministic headline-context rules
                     (sourced headlines only; else NO_RELEVANT_INFORMATION)
         v
-src/recommendation/ component blend -> time heuristics -> category -> rank ->
-                    evidence-backed reasons + prerequisites; state.json (v5)
+src/recommendation/ group score -> confluence -> time rules -> category ->
+                    rank -> reasons + prerequisites; state.json (v6)
         v
 src/storage/        intraday 1-min CSV candle cache (DECISIONS #12)
-src/app/            worker: ReplaySource | LiveSource -> engine -> state.json
+src/app/            worker: ReplaySource | LiveSource -> scan/universe ->
+                    engine -> state.json; research snapshots; live paper
+src/research/       snapshots -> outcomes -> pre-registered evaluation
         v
 app/dashboard.py    Streamlit <- reads data/processed/state.json only
                     (app/view_model.py: stdlib, tested)
-src/paper/          SIMULATION ONLY (DECISIONS #20, #29): Strategy -> Broker
+src/paper/          SIMULATION ONLY (DECISIONS #20, #29, #30): Strategy -> Broker
                     interface -> SimulatedBroker (fills.py rules, costs.py,
-                    limits, 15:15 square-off) -> SQLite ledger.
+                    limits, long/short, 15:15 square-off) -> SQLite ledger
+                    (resumed after a worker restart) -> day report.
                     BacktestBroker (cached bars, backtest.py) | PaperBroker
                     (live ticks, src/app/paper_live.py in the worker).
                     TradingSession drives either on a minute clock.
@@ -54,6 +59,9 @@ polling and writes feature/recommendation state; Streamlit only reads it.
 ## Config
 
 - `settings.yaml` — storage, instrument cache, feed, candle timeframes.
-- `strategy.yaml` — indicator params, in-play scanner, M6 `engine:` baseline
-  weights + time heuristics, category thresholds.
-- `universe.yaml` — exchange, allowed series, symbols, indices, liquidity filters.
+- `strategy.yaml` — strategy_version, group weights, time rules, categories,
+  sector/microstructure/in-play parameters.
+- `universe.yaml` — curated symbols (replays), indices, liquidity filters,
+  market scan (long top N, short-side movers).
+- `paper.yaml` / `costs.yaml` — simulated broker, strategies, Groww charges.
+- `sectors.yaml`, `news.yaml` — sector map, headline rules.

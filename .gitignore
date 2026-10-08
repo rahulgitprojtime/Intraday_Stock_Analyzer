@@ -15,24 +15,22 @@ venv/
 .coverage
 htmlcov/
 
-# Data (never commit market data or caches)
-data/raw/*
+# Data, reports and logs (never commit market data, caches or results)
 data/processed/*
 data/cache/*
-!data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/cache/.gitkeep
+data/demo/
+data/replay/
+data/replay_*/
+data/universe_*/
+data/scans/
+data/research/
+data/paper/
+reports/
+logs/
 
 # OS / editor
 .DS_Store
 .idea/
 .vscode/
-data/demo/
-data/replay/
-reports/
-data/paper/
-data/replay_*/
-data/scans/
-data/research/
-logs/
-data/universe_*/

@@ -1,4 +1,4 @@
-"""Live feed watchdog — M7 (spec 2026-09-28 §6).
+"""Live feed watchdog — M7 (DECISIONS #17).
 
 The SDK reconnects silently and never tells the caller, so health is
 judged by tick age. During the session: no tick for `stale_after_seconds`

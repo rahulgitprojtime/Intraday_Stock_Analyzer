@@ -1,4 +1,4 @@
-"""Candle sources for the worker — M6 (spec §22).
+"""Candle sources for the worker — M6 (DECISIONS #12).
 
 Both expose `minute_candles(inst, now)` (today's closed 1-min bars, never
 later ones) and `prep(inst, day)`. Read-only market data; no orders.

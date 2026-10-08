@@ -1,4 +1,4 @@
-"""state.json schema — M6 (spec §24-25, DECISIONS #14).
+"""state.json schema (DECISIONS #14).
 
 Incompatible changes increment SCHEMA_VERSION and are logged in
 DECISIONS.md. Readers reject versions they do not know.

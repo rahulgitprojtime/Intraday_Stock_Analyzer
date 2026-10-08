@@ -1,4 +1,4 @@
-"""Market context — M6 (spec §10).
+"""Market context (DECISIONS #22).
 
 `market_context_score` from NIFTY % change since the open, linear ramp
 (temporary baseline). Missing or stale NIFTY → unavailable (excluded from

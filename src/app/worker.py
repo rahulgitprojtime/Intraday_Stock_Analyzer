@@ -1,4 +1,4 @@
-"""Worker — M6 (spec §3, §17, §22-25).
+"""Worker — M6 (DECISIONS #14).
 
 Each minute: candles → engine → `data/processed/state.json` (atomic
 replace). The dashboard reads only that file. Read-only market data; this

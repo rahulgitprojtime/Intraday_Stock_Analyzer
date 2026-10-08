@@ -1,4 +1,4 @@
-"""Streamlit dashboard — M6 (spec §19-21).
+"""Streamlit dashboard (DECISIONS #8, #11).
 
 Reads only data/processed/state.json (written by the worker). Shows the
 highest-ranked intraday candidates according to the configured

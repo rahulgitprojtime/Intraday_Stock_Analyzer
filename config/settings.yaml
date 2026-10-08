@@ -1,18 +1,14 @@
 # Application-wide settings. Overridable via environment variables where noted.
 
-# Recommendation-only product: no trading modes, no order execution
-# (DECISIONS.md #8).
-
-logging:
-  level: INFO
+# No trading modes and no order execution: orders exist only in the paper
+# simulator (DECISIONS #8).
 
 storage:
   data_dir: ./data
-  historical_cache_format: parquet   # parquet | duckdb
   instrument_cache_file: cache/groww_instruments.csv
   instrument_cache_max_age_hours: 20
 
-feed:                               # live feed watchdog (M7, spec 2026-09-28 §6)
+feed:                               # live feed watchdog (DECISIONS #17)
   poll_seconds: 1.0                 # poller reads latest LTP/depth values
   stale_after_seconds: 30           # no tick for this long -> STALE
   down_after_seconds: 60            # -> DOWN and restart

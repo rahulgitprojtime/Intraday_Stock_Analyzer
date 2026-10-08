@@ -25,7 +25,7 @@ def load_settings() -> dict:
 
 
 def validate_engine_weights(weights: dict) -> None:
-    """M6 blend weights: required, positive, summing to 1.0 (DECISIONS #14)."""
+    """Group weights: required, positive, summing to 1.0 (DECISIONS #22, #25)."""
     if not weights:
         raise ValueError("strategy.yaml engine.weights is required")
     bad = {k: v for k, v in weights.items() if not isinstance(v, (int, float)) or v <= 0}

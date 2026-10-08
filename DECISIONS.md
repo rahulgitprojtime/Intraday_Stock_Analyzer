@@ -1,565 +1,300 @@
 # DECISIONS.md
 
-Append-only log of decisions that would otherwise get re-litigated or
-silently drift. Newest at the bottom. Each entry: what was decided, why,
-and what it rules out.
+Decisions that would otherwise get re-litigated or silently drift. Each
+entry states what holds **today**; when a later decision changes an earlier
+one, the earlier entry is rewritten to match (cleaned up 2026-10-08), so
+nothing here contradicts the code. Numbers are stable because code and
+config cite them; append new decisions at the bottom.
+
+Retired numbers: #5 (trading-mode switches; replaced by #8), #16 (not-in-play
+cap at WATCH; replaced by the group score of #22).
 
 ---
 
-### #1 — Groww docs verified via web search, not assumed (2026-09-23)
-Fetched https://groww.in/trade-api/docs/python-sdk and its Live Data,
-Historical Data, and Feed subpages directly rather than relying on training
-data, per the project's hard rule against fabricating API behavior. Notes
-captured in `docs/groww_api_notes.md`. Anything not in that file should be
-re-verified against the live docs before being relied on, since API surfaces
-change.
+## Product and boundaries
 
-### #2 — No dependency versions frozen in M0 (2026-09-23)
-`pyproject.toml` lists dependency *families* (pandas, numpy, streamlit,
-growwapi, pyotp, pyarrow, duckdb, pytest) without exact pins. Rationale:
-pinning now, before M1 confirms which `growwapi` SDK version behaviors we
-depend on, risks locking to a version that's already stale. Pin exact
-versions at the end of M1 once the adapter is implemented and tested, and
-record the pinned versions here.
+### #1 — Groww behaviour is verified, never assumed (2026-09-23)
+Groww SDK behaviour comes from the live docs (groww.in/trade-api/docs) or
+live checks, recorded in `docs/groww_api_notes.md`. Anything not in that
+file is re-verified before it is relied on.
 
-### #3 — Storage: start with Parquet + SQLite, not a database service
-(2026-09-23)
-Per Phase 16 ("start simple"), historical candle cache uses Parquet files on
-disk (`data/processed/`) and SQLite for anything needing querying (e.g.
-signal history for backtest review). No Redis/Postgres until a concrete
-scaling problem appears — if one does, it gets justified here before being
-added.
+### #4 — The broker adapter is the only Groww-aware module (2026-09-23)
+`src/broker/` (`BrokerAdapter`, `GrowwAdapter`, `InstrumentMaster`,
+`groww_feed.py`) is the only code that imports `growwapi` or parses Groww
+formats. Every other layer uses the dataclasses in `src/data/models.py`.
 
-### #4 — Broker adapter is the only Groww-aware module (2026-09-23)
-`src/broker/base.py` defines `BrokerAdapter`, an abstract interface. Every
-other layer (candles, indicators, signals, risk, UI) depends only on the
-dataclasses in `src/data/models.py`, never on Groww-specific types or the
-`growwapi` package directly. This is what makes "add another broker" (Phase
-20) realistic later without a rewrite, and it's the one abstraction Phase 21
-"don't over-engineer" is *not* meant to discourage — it's load-bearing for
-Phase 3's explicit requirement.
+### #6 — Cash equity only; F&O out of scope (2026-09-23, user-confirmed)
+NSE cash equity, intraday. `Segment` has only `CASH`; option-chain/Greeks
+endpoints are not wrapped. Adding F&O would be a deliberate new segment.
 
-### #5 — Modes default to non-executing (2026-09-23)
-`config/settings.yaml` sets `mode: DATA_ONLY` by default and a separate
-`live_trading: false` flag that must be explicitly and manually set true.
-Two independent switches (mode + live_trading flag) rather than one, so a
-config typo can't silently enable order execution.
+### #8 — Market data + recommendations + SIMULATED trading; never live orders (2026-09-25, updated 2026-10-08)
+- The product is a live intraday recommendation dashboard plus a paper
+  trading/backtesting simulator (#29, #30). No order ever reaches Groww.
+- `BrokerAdapter` exposes market data only (a test asserts it has no
+  order/position/holdings methods). Orders exist only inside the simulated
+  brokers in `src/paper/`, which never import `src/broker` or `growwapi`.
+- No trading modes and no live-trading switch exist; the dashboard has no
+  order controls. Recommendation categories are analytical, not instructions.
 
-### #6 — F&O is out of scope; cash equity only (2026-09-23, user-confirmed)
-Derivatives (F&O) trading is explicitly excluded. This project targets NSE/BSE
-cash-equity intraday trading only. Concretely this means:
-- `Segment` (src/data/models.py) has only `CASH` — no `FNO` member at all.
-- `get_option_chain` / `get_greeks` (documented in `docs/groww_api_notes.md`
-  for completeness, since they're part of the verified Groww surface) will
-  **not** be wrapped in `BrokerAdapter` — there is no F&O-shaped method on
-  the interface to implement.
-- Universe filters, liquidity scoring, and the signal/risk engines assume
-  cash equity throughout (no open-interest, Greeks, or expiry handling
-  anywhere in the design).
-- If F&O is ever added later, it should be a new segment + new adapter
-  methods added deliberately, not a "generalize now for something we might
-  need" abstraction — consistent with Phase 21's "don't over-engineer."
+### #7 — Hand-rolled retry helper (2026-09-23)
+`src/utils/retry.py` (retry N times, exponential backoff, chosen exception
+types) instead of `tenacity`. Revisit only if retry needs grow.
 
-### #7 — Hand-rolled retry helper instead of `tenacity` (2026-09-23)
-`src/utils/retry.py` is ~30 lines: retry N times with exponential backoff,
-only for specified exception types. `tenacity` was in the original M0
-dependency list but got removed — the adapter's actual need is small enough
-that pulling in a dependency for it fails "never add dependencies without
-justification." Revisit only if retry needs grow more elaborate (jitter,
-per-call budgets, circuit breaking).
+### #2 — Dependencies not pinned yet (2026-09-23)
+`pyproject.toml` lists dependency families without versions. Pin
+(growwapi 1.5.0, nats-py, …) once live runs are stable; record pins here.
 
-### #8 — Pivot: recommendation engine, never an execution system (2026-09-25, user directive)
-The product is a live intraday *recommendation* dashboard, not a trading
-bot. Removed: `DATA_ONLY/…/LIVE_TRADING` modes, `live_trading_confirmed`,
-risk/position-sizing config, `src/risk/`, and the paper-trading/risk
-milestones. Supersedes #5. `BrokerAdapter` exposes market data only; a test
-asserts it has no order/position/holdings methods. Backtesting survives
-only as *methodology validation* (M10), not a user-facing module. Package
-renames (all were empty): `signals/`→`recommendation/`,
-`features/`→`quantitative/`; added `qualitative/`, `storage/`.
+### #3 — Storage: files + SQLite, no database service (2026-09-23, updated 2026-10-08)
+1-min candles: stdlib CSV cache (#12). State: `data/processed/state.json`.
+Research and scans: JSONL. Paper/backtests: SQLite ledgers (`data/paper/`).
+No Redis/Postgres until a concrete need is justified here. All data
+directories are gitignored.
+
+## Data
 
 ### #9 — Live feed carries price only; volume comes from REST (2026-09-25)
-Verified against current docs: `GrowwFeed` LTP payload is only
-`{tsInMillis, ltp}` per exchange_token — no volume, OHLC, or cumulative
-quantity. Index feed is `{tsInMillis, value}`; depth feed is
-`{tsInMillis, buyBook, sellBook}`. Consequences: tick-built candles would
-have no volume, so RVOL/VWAP/OBV must use Groww's **1-minute historical
-candles** (which include volume) as the base candle source, refreshed
-incrementally each minute within the Live Data rate limit (10/s, 300/min).
-The feed is used for freshness (latest LTP, stale detection), the
-still-forming candle's price, index values, and top-of-book spread. M3/M4
-must re-check whether `get_quote` volume is a cheaper per-minute source.
+`GrowwFeed` LTP payload is `{tsInMillis, ltp}` (index `{tsInMillis,
+value}`, depth `{tsInMillis, buyBook, sellBook}`): no volume. Candles with
+volume come from 1-min historical data refreshed each minute; the feed gives
+freshness, the latest price, index values and top-of-book depth. `get_quote`
+carries today's cumulative volume (used by the scan, #21).
 
 ### #10 — Instrument master via stdlib csv, cached daily (2026-09-25)
-Groww's public `instrument.csv` (~20 MB, mostly F&O) is downloaded with
-`urllib`, cached at `data/cache/groww_instruments.csv`, refreshed after
-20h, and filtered to CASH EQ/IDX rows (~12.7k). No SDK auth needed for
-this. If a refresh fails, the stale cache is used (tokens rarely change
-intraday). Stock sector is **not** in the CSV — M7 needs a sector map.
+Groww's public `instrument.csv` is cached at
+`data/cache/groww_instruments.csv`, refreshed after 20 h, filtered to CASH
+EQ/IDX rows; a failed refresh uses the stale cache. It has no sector column
+(sector map: `config/sectors.yaml`, #18).
 
-### #11 — Long-only momentum setups; dashboard before feed (2026-09-25, user-confirmed)
-- LONG/upward-momentum candidates only. No short setups for now.
-- Ranking is driven by named, deterministic setups experienced intraday
-  traders use (ORB, VWAP pullback/reclaim, PDH breakout, narrow CPR,
-  gap-and-go, EMA9/20 pullback, RS vs NIFTY, 1-min momentum burst), gated
-  by a stocks-in-play filter (time-of-day RVOL, gap, ATR%) and time-of-day
-  rules. Two modes: Scalp (1-min) and Day (5/15-min).
-- Cards show no price levels (no trigger/invalidation/stop/target).
-- Build order: REST 1-min pipeline → setups → scanner → recommendation +
-  dashboard MVP → live feed/depth (for Scalp quality) → context → news.
-- "Scalp" means 1-minute candidates; Groww is not a low-latency source.
+### #12 — Daily stats from 1-min history; CSV candle cache (2026-09-25)
+One 1-min history request per stock (29 calendar days) gives daily OHLCV
+(aggregated locally) for CPR/NR7/ATR and the 20-session volume-by-minute
+curve. The intraday cache is stdlib CSV with atomic replace: Windows
+Application Control blocks pandas/pyarrow DLLs on the dev machine. The
+market scan uses Groww daily candles directly (one call, ≤ 180 days, #21).
 
-### #12 — Daily candles derived from 1-min history; CSV candle cache (2026-09-25)
-One 1-min history request per stock (29 calendar days, inside the 30-day
-window) gives both daily OHLCV (aggregated locally) for CPR/NR7/ATR and the
-20-session volume-by-minute curve. Avoids the unverified Groww daily-interval
-constant and halves REST calls. The intraday cache is stdlib CSV
-(`src/storage/candle_cache.py`, atomic replace), not parquet: Windows
-Application Control blocks pandas/pyarrow DLLs on the dev machine. Revisit
-if that changes or the cache becomes a bottleneck.
+## Recommendation engine (long only)
+
+### #11 — Long-only momentum candidates; no price levels on cards (2026-09-25, updated 2026-10-08)
+- The recommendation engine, its scoring and the research loop look for
+  LONG/upward-momentum candidates only. Shorts exist only in the paper
+  simulator (ORB, #30); a short-side engine would be a new, untested model.
+- Named deterministic setups (ORB, VWAP pullback/reclaim, PDH breakout,
+  narrow CPR, gap-and-go, EMA9/20 pullback, RS vs NIFTY, 1-min momentum
+  burst) plus time-of-day rules. Two modes: SCALP (1-min) and DAY (5/15-min).
+- Recommendation cards show no price levels (no trigger/stop/target).
+  Stops and targets exist only in the paper simulator and its views.
 
 ### #13 — Setup detector conventions (2026-09-27)
 `src/quantitative/setups.py`: each detector takes today's candles of one
-timeframe, ignores forming bars, and returns `SetupSignal(name, state,
-detail)` with state NONE/FORMING/TRIGGERED/EXTENDED/FAILED. `ext` (distance
-past the trigger that counts as EXTENDED) is passed by the caller, derived
-from ATR in M6. FORMING = within 0.75% below the trigger; pullback touch
-tolerance 0.1%; narrow CPR <= 0.25% width; gap-and-go >= 1% gap (failed on
-gap fill); RS trigger >= 0.5 pts vs NIFTY since open; momentum burst =
-body and volume >= 2x the prior 20-bar average, close in top quarter.
-All illustrative, not tuned — M10 validates. PDH breakout requires a
-cross; opening above PDH is gap-and-go territory, not PDH.
+timeframe, ignores forming bars, returns `SetupSignal(name, state, detail)`
+with state NONE/FORMING/TRIGGERED/EXTENDED/FAILED. EXTENDED distance is
+ATR-based (`ext_atr_mult`). FORMING = within 0.75% below the trigger;
+pullback touch tolerance 0.1%; narrow CPR ≤ 0.25% width; gap-and-go ≥ 1%
+gap (fails on gap fill); RS ≥ 0.5 pts vs NIFTY since open; momentum burst =
+body and volume ≥ 2x the prior 20-bar average, close in the top quarter.
+PDH breakout requires a cross. Illustrative, untuned.
 
-### #14 — M6 extensible recommendation model; state schema v2 (2026-09-27, user-reviewed)
-Spec: `docs/superpowers/specs/2026-09-27-m6-recommendation-dashboard-design.md`.
-- Final score = weighted blend over *available* score components
-  (`setup`, `in_play`, `market_context` in M6; 0.55/0.35/0.10 is a
-  temporary baseline, not optimal). Unavailable components (sector M8,
-  qualitative M9) are excluded, never defaulted — adding one never changes
-  the score. Future weights are set when a component ships; the old
-  pre-assigned `scoring.weights` / `recommendation.weights` blocks are removed.
-- Liquidity (universe.yaml filters) is an eligibility gate; ineligible,
-  stale or incomplete symbols are excluded from ranking, never scored as live.
-- `Recommendation` carries quantitative group sub-scores, market/sector/
-  qualitative blocks, adjustments, evidence-backed reasons, data_quality and
-  rank-stability fields; `null` = unavailable. No price fields.
-- Missing NIFTY → market_context unavailable (no neutral 50).
-- `state.json` schema_version 2 (v1 was an unreleased draft). Incompatible
-  changes increment the version and are logged here.
-- Time-of-day rules and all thresholds are unvalidated heuristics until M10.
+### #14 — Recommendation model and state.json (2026-09-27, updated 2026-10-08)
+- A `Recommendation` carries group scores, market/sector/qualitative
+  blocks, evidence-backed reasons, prerequisites, data quality and rank
+  fields; `null` = unavailable, never defaulted. No price fields.
+- Liquidity is an eligibility gate; stale, incomplete or illiquid symbols
+  are excluded from ranking, never scored as live.
+- `state.json` is versioned (currently schema v6); incompatible changes bump
+  the version and are logged here. Weights: #22/#25.
 
-### #15 — Confluence by setup family; AVOID not rankable; state schema v3 (2026-09-27, user-approved)
-- Confluence bonus counts independent setup *families* (price_structure,
-  vwap, trend, momentum, relative_strength) that are TRIGGERED/FORMING:
-  0–1 → +0, 2 → +2, 3 → +3, 4+ → +5 (max 5), after the blend, before
-  time caps. Correlated setups in a family count once; volume/market/
-  in-play are not counted again (already in the blend). Replaces the
-  rev-2 `min(100, best + 10k)` rule, which could never change a score.
-- Two hard tiers: *excluded* (stale/missing critical data, illiquid —
-  not scored) and *AVOID* (not in play, best setup failed, score below
-  NEUTRAL floor — scored, `eligible_for_top_n: false`, `rank: null`,
-  `exclusion_reasons`). Soft penalties (time-of-day, EXTENDED, future
-  sector/volatility) stay rankable. Top-N is drawn from rankable only.
-- `state.json` schema_version 3 (AVOID rank null breaks v2 readers).
+### #15 — Confluence by setup family; AVOID is not rankable (2026-09-27)
+- Bonus by independent setup families TRIGGERED/FORMING (price_structure,
+  vwap, trend, momentum, relative_strength): 2 → +2, 3 → +3, 4+ → +5.
+- Excluded (stale/missing critical data, illiquid, spread > 0.5%) = not
+  scored. AVOID (best setup FAILED, score below the NEUTRAL floor) = scored,
+  `rank: null`, never in the top N. Time-of-day caps stay rankable.
 
-### #16 — Not in play caps at WATCH instead of forcing AVOID (2026-09-28, user-approved)
-- First real-day replay (2026-09-25, 25 large caps): time-of-day RVOL
-  rarely reaches `min_rvol` 1.5, so "not in play → AVOID" left 0
-  rankable stocks on 62 of 75 sampled ticks despite TRIGGERED setups.
-- Now not-in-play is a soft cap: score capped just below the CANDIDATE
-  floor (≤ WATCH), stays rankable; in-play names always outrank it.
-  Hard AVOID gates remain: best setup FAILED, score below NEUTRAL floor.
-- Known trade-off: capped names tie at the cap and sort by symbol.
-  Supersedes the "not in play" item of #15. Schema unchanged (v3).
+### #17 — Live feed: hybrid read path, spread gate, SCALP microstructure (2026-09-28)
+- `LiveFeed` counts ticks in the SDK callback; a 1 s poller copies latest
+  LTP/depth into a thread-safe `FeedStore`. Ages use local arrival time.
+- `FeedWatchdog`: STALE 30 s, DOWN 60 s → restart with a fresh token, max
+  1/min, back off to 5 min after 5; also DOWN when < 50% of stocks tick.
+  The worker never stops for the feed; REST candles keep ranking.
+- Spread > 0.5% excludes a stock when depth is fresh. SCALP gets a
+  microstructure signal (imbalance 60% / velocity 40%; velocity unknown for
+  the first 5 min of a symbol).
 
-### #17 — M7 live feed: hybrid read path, spread gate, SCALP microstructure; schema v4 (2026-09-28, user-approved)
-- Spec: `docs/superpowers/specs/2026-09-28-m7-live-feed-design.md`.
-- The SDK callback gets only meta, so `LiveFeed` counts ticks in the
-  callback (exact velocity) and a 1 s poller reads latest LTP/depth into a
-  thread-safe `FeedStore` (`src/data/`). Ages use local arrival time.
-- Health by tick age (`FeedWatchdog`): STALE 30 s, DOWN 60 s → restart with
-  a fresh socket token, max 1/min, backoff to 5 min after 5. The worker
-  never stops for the feed: REST candles keep ranking. Health also needs
-  stock coverage >= 50% (stocks ticking within 60 s): live, after a network
-  drop, NIFTY kept ticking while 23/24 stocks went silent.
-- Spread > `max_spread_pct` (0.5) excludes a stock (both modes) when depth
-  is fresh; otherwise "spread unchecked". `microstructure` component
-  (imbalance 60% / velocity 40%) is SCALP-only at weight 0.10; engine
-  weights 0.50/0.30/0.10/0.10. DAY/replay renormalize over the rest
-  (0.556/0.333/0.111) — small shift, user-accepted.
-- Velocity is None for the first 5 min a symbol is observed (the 5-min
-  average is understated during warm-up; seen live as 5.0 for everything).
-- `BrokerAdapter` streaming stubs removed; streaming lives in
-  `src/broker/groww_feed.py`; `GrowwAdapter.api_client()` hands the SDK
-  client to it. State schema v4 adds a top-level `feed` block.
+### #18 — Sector confirmation + prerequisites checklist (2026-09-28)
+- `config/sectors.yaml` (user-maintained) maps sectors to NSE indices;
+  unmapped stocks → sector UNAVAILABLE, still eligible.
+- Verdict: rs = sector index % since open − NIFTY's; peers = other universe
+  members up since open. CONFIRMED / WEAK / UNAVAILABLE (thresholds in
+  `strategy.yaml sector`). The verdict feeds the sector group (#22).
+- Every card shows a prerequisites checklist (technicals, in play,
+  liquidity, sector, market, news: PASS/WARN/FAIL/NA/NOT_CHECKED + detail).
 
-### #18 — M8 sector funnel + prerequisites checklist; schema v5 (2026-09-28, user-approved design, no spec by request)
-- User intent: weak sector → deprioritize; good candidate → confirm the
-  sector (other stocks in it moving) → technicals → top 10; news in
-  parallel (M9). Each listed stock shows what was checked and how it came
-  out. Approach "funnel stages with soft effects + checklist" chosen over
-  a hard gate (would empty the list on quiet days) and a pure blend.
-- `config/sectors.yaml` (user-maintained; CSV has no sector): 9 sectors
-  mapped to Groww NSE indices; LT, BHARTIARTL, TITAN have none → sector
-  UNAVAILABLE, still eligible, flagged (user choice). NIFTYCDTY
-  membership is best-effort.
-- Verdict (`src/market/sector.py`): rs = sector index % since open − NIFTY's;
-  peers = *other* universe members up since open. CONFIRMED: rs ≥ +0.2
-  and (< 2 usable peers or ≥ 60% up); WEAK: rs ≤ −0.2 or (≥ 2 peers and
-  ≤ 40% up); stale/missing → UNAVAILABLE (never guessed, no cap).
-- Scoring: `sector_context` component 0.10 (both modes); weights setup
-  0.45 / in_play 0.30 / market 0.05 / microstructure 0.10 / sector 0.10.
-  WEAK → capped at WATCH **and** −5 after caps. Replay 2026-09-25 showed
-  why: every stock was already at the not-in-play cap, so a cap alone
-  changed nothing and ties sorted alphabetically (WEAK AXISBANK #1).
-  Ranking ties now break by pre-cap score, then symbol (supersedes the
-  #16 trade-off).
-- `prerequisites` (technicals, in play, liquidity, sector, market, news)
-  with PASS/WARN/FAIL/NA/NOT_CHECKED + detail, and a one-line
-  `prerequisites_summary`; news NOT_CHECKED until M9. Schema v5.
-- Out of scope: exchange-wide breadth, INDIAVIX, NSE-sourced membership.
+### #19 — News check: Google News RSS + headline rules, unweighted (2026-09-28)
+- NSE/BSE announcement APIs refuse scripts; Groww has no news endpoint.
+  Google News RSS (headline only) behind a pluggable `NewsSource`.
+- Headline-in-context rules (`headline_rules.py`, `config/news.yaml`) give
+  POSITIVE / NEGATIVE / MIXED / NEUTRAL / NO_RELEVANT_INFORMATION per stock
+  (18 h look-back, stories merged across outlets); stale/failed →
+  UNAVAILABLE. Fetched 3 stocks/minute, never blocks ranking.
+- News has no weight in the score (#25); it is shown on the checklist with
+  linked headlines and recorded for research.
 
-### #19 — M9 news check: Google News RSS + headline-context rules (2026-09-28, user-approved, no spec by request)
-- Probed 2026-09-28: NSE and BSE announcement APIs return 403 to scripts
-  (not bypassed). Google News RSS works, no key, but carries the
-  **headline only** (description repeats it; links are Google redirects).
-  User chose RSS now, pluggable `NewsSource` for a keyed API later
-  (Marketaux / Drishti give snippets + sentiment; free tiers are small).
-- Rules (`src/qualitative/headline_rules.py`, `config/news.yaml`), user
-  asked to read headlines in context: stock named (aliases; common-word
-  aliases case-sensitive; look-alike companies excluded) → not a
-  roundup/list/price page → not speculation → direction phrase nearest
-  the stock, same clause (`;`/`|`), within 8 words; `*` gaps allowed
-  ("cuts * target"); negation within 5 words before neutralises.
-- Per stock (`news_check.py`): 18 h look-back, same story across outlets
-  merged (word overlap ≥ 60% of the shorter headline, same direction),
-  weighted by outlets → POSITIVE / NEGATIVE / MIXED / NEUTRAL /
-  NO_RELEVANT_INFORMATION. Stale (> 30 min) or failed → UNAVAILABLE.
-- Effects: POSITIVE +3 before caps (credibility, never enough alone);
-  NEGATIVE capped at WATCH and −5 after caps (like a weak sector).
-  Checklist news line cites the headline, outlet(s) and time; cards link
-  the real headlines. Replay: news NOT_CHECKED (no historical news).
-- Fetching staggered (3 stocks/minute, each ~10 min) inside the worker
-  tick; never blocks ranking. Live check on today's headlines found and
-  fixed look-alike and word-form misses; rules remain illustrative and
-  unvalidated (M10). Known gap: republished old stories (e.g. "Q1 results"
-  in September) can't be told apart from a headline alone.
+### #22 — One transparent score from groups (2026-09-28, user directive)
+- Each group is 0-100 from its sub-signals (averaged over those with data;
+  none → the group drops out). Groups: movement (key avoids "price", #11),
+  volume, momentum, setup, market, sector, liquidity. ADX counts only above
+  EMA20; RSI > 80 = overextended → 50.
+- Final score = weighted average of available groups, weights from #25.
+  Kept: time-of-day rules, hard rejects (#15). Weak sector, not-in-play and
+  news have no special caps; they just score low in their group.
+- Two stages: stage 1 pre-ranks the liquid pool from quotes (movement,
+  volume incl. acceleration, liquidity) → top 50 → stage 2 scores all groups
+  on 1-min candles each minute. BANK NIFTY joins the market group for bank
+  sectors; market regime = NIFTY vs its EMA20.
 
-### #20 — M10 paper trading / outcome evaluation, simulation only (2026-09-28, user-approved)
-- Narrows #8: simulated positions are allowed **for evaluating the
-  recommendation methodology**. Still no order/position/holdings API, no
-  order-style UI, no trading modes (a single `paper.yaml enabled: false`
-  switch; LIVE trading does not exist). `src/paper` never imports
-  `src/broker` (tested).
-- #11 still holds for recommendation cards (no levels). Stop/target exist
-  only in the paper journal and the separately labelled simulation views.
-- Conventions (config/paper.yaml, unoptimised starting values): entry =
-  existing recommendation with category ≥ CANDIDATE, score ≥ 65, best setup
-  TRIGGERED, top 10, max 3 open, 1 trade/symbol/day, none after 15:00;
-  fill at the next bar's OPEN + 5 bps; stop = fill − 0.25 × daily ATR (0.6%
-  fallback), target = 1.5R, both fixed at entry; gap below stop fills at the
-  open; stop and target in one bar → STOP_LOSS; 15:20 square-off at the last
-  closed bar's close; 0.05% round-trip charges; 10 shares fixed.
-- Journal: append-only JSONL (ENTRY / EXIT / MISSED); entries immutable;
-  trade id = hash(run, day, symbol, mode, signal time, strategy_version);
-  every record carries strategy_version, config hash, git commit.
-- Replay: the simulator runs on the worker's clock with bars closed ≤ T
-  only; a poison test proves later bars cannot change earlier decisions or
-  fills. Historical news does not exist → NOT_AVAILABLE, never backfilled.
-- First real run (2026-09-25, default policy): NO TRADES — max score all
-  day 64.99; every stock capped at WATCH (not in play, #16). Recorded as a
-  finding; the policy was not loosened to manufacture trades.
-- Known biases stated in reports/docs: survivorship (today's 25 large
-  caps), no historical spread/depth, small samples (< 30 → warning).
+### #25 — Current weights: setup 25, volume 20, movement 15, momentum 15, sector 10, market 10, liquidity 5 (2026-09-28, user directive)
+News unweighted (the user checks news by hand). Weights are a judgement
+call, unvalidated; they change only through pre-registered tests (#24).
+Current `strategy_version` is in `config/strategy.yaml` (2026-09-29.m16:
+lunch penalty removed, #27).
 
-### #21 — M11 market-wide volume scan picks the live universe (2026-09-28, user directive)
-- User: "full market scan; don't limit to a few stocks"; then "pick the top
-  25 by highest change in volume via Groww API, then rank them by our
-  parameters". The hand-written 25-stock list now serves only replays and
-  scan-disabled runs; live, the universe is chosen each minute.
-- Verified live 2026-09-28: 1,643 NSE EQ-series stocks allow intraday (of
-  4,292 cash instruments). `get_quote` carries today's cumulative volume
-  (~194 sequential calls/min); `get_ohlc` (50/call) has no volume; the
-  feed has no volume (#9). Daily candles: one call, ≤ 180 days.
-- Pipeline: daily candles for all 1,643 (cached per day, ~8 min) → 20-day
-  stats → liquid pool (existing filters) → background quote sweep at
-  200 calls/min (Groww Live Data cap 300/min shared with the worker) →
-  volume change = today's volume ÷ (20-day avg × market share of a normal
-  day traded by now) → long-only (above previous close, user choice a) →
-  top 25 (min stay 10 min; pinned symbols never drop) → existing M4-M9
-  funnel ranks them → dashboard top 10.
-- The time-of-day share is a market-wide curve measured from 6,025 real
-  stock-days (config/market_volume_curve.json; 7% by 09:30, 39% by noon,
-  81% by 15:00), rebuilt with scripts/build_volume_curve.py.
-- New members: existing prep (one 1-min history call), feed resubscribed
-  on membership change, news uses curated aliases else the Groww name.
-  Sector map still covers only the curated names → others "not available".
-- Every tick's scan is appended to data/scans/<date>.jsonl, building a
-  point-in-time history for M10 (a historical market-wide backtest would
-  need ~21k calls / ~9 GB of 1-min data; deferred).
-- State schema v6: top-level `universe` block (source, pool, quoted,
-  sweeps, active symbols with volume change).
+## Universe
 
-### #22 — M12 one transparent score from eight groups (2026-09-28, user directive)
-- User: "whichever stocks make the most score out of these indicators rank
-  on top; simple" — criteria grouped as PRICE MOVEMENT, VOLUME, MOMENTUM,
-  SETUP, MARKET, SECTOR, LIQUIDITY/DATA, QUALITATIVE.
-- `src/quantitative/groups.py`: each group 0-100 from sub-signals (averaged
-  over those with data; none → the group drops out, never counted as 0).
-  Group key for price movement is `movement` (the word "price" is banned in
-  output keys so no price levels leak, #11). ADX counts only above EMA20
-  (it is direction-agnostic; long-only). RSI > 80 = overextended → 50.
-- Final score = weighted average of available groups, user-chosen weights:
-  setup 20, volume 20, movement 15, momentum 15, sector 10, market 10,
-  liquidity 5, news 5. Supersedes the special caps of #16 (not in play →
-  WATCH), #18 (weak sector → WATCH − 5) and #19 (news +3 / cap − 5): those
-  signals now just lower their group. Kept: time-of-day rules (user
-  choice), hard rejects (stale/invalid data, illiquid, spread > 0.5%,
-  failed setup, below NEUTRAL floor).
-- Two stages because full criteria need 1-min candles (one call per stock
-  per minute; Groww cap 300/min): stage 1 pre-ranks the whole liquid pool
-  from quotes on the quote-computable groups (movement, volume incl.
-  acceleration between sweeps, liquidity; same weights, normalised) → top
-  50 → stage 2 scores all eight groups each minute.
-- BANK NIFTY joins the market group for sectors listed in
-  `sectors.yaml bank_nifty_sectors`; market regime = NIFTY vs its EMA20.
-- Weights are a judgement call, unvalidated; change only via M10 experiments.
+### #21 — Market-wide volume scan picks the live universe (2026-09-28, user directive)
+- All NSE EQ-series intraday stocks (1,643 on 2026-09-28) → daily candles
+  (cached per day) → 20-day stats → liquid pool (`universe.yaml filters`:
+  price 250-2500 per #26, avg volume ≥ 5 lakh, avg value ≥ ₹5 cr).
+- Volume change = today's volume ÷ (20-day avg × the market's normal share
+  of the day traded by now; `config/market_volume_curve.json`, from 6,025
+  real stock-days, rebuilt by `scripts/build_volume_curve.py`).
+- Long universe: up-movers only, top 50 (min stay 10 min; pinned symbols
+  never drop). Short-side movers are added for the paper simulator (#30).
+- Each minute's scan is appended to `data/scans/<date>.jsonl`. The curated
+  `universe.yaml symbols` list serves replays and scan-disabled runs only.
 
-### #23 — M13 fast scan cycle (2026-09-28)
-- The M11/M12 sweep quoted the pool one stock at a time (~200/min), so a
-  full pass took several minutes and rankings mixed stale quotes.
-- Now once a minute: day OHLC for the whole liquid pool in batches of 50;
-  prices from the live feed where subscribed, batch LTP for the rest;
-  movement pre-rank of every pool stock (long-only: above previous close);
-  then parallel quotes (4 workers, shared limiter 8 calls/s < Groww 10/s)
-  for only the top `movers_per_cycle` (100) movers, which carry volume.
-- Quotes older than 180 s drop out of the ranking. Every SDK call gets a
-  10 s timeout (growwapi defaults to none; a stalled call froze the scan).
-- Budget per minute ≈ pool/50 OHLC + pool/50 LTP + 100 quotes + worker
-  1-min candles for the active set — under the 300/min cap.
-- `scan_now.py --save` writes the top symbols; `fetch_replay_data.py
-  --symbols-file` downloads replay data for them.
+### #23 — Fast scan cycle (2026-09-28)
+Once a minute: batch OHLC for the pool (50/call), feed prices where
+subscribed + batch LTP for the rest, movement pre-rank, then parallel quotes
+(4 workers, shared limiter 8 calls/s < Groww's 10/s) for the top 100 up-
+movers (+30 down-movers, #30). Quotes older than 180 s drop out. Every SDK
+call has a 10 s timeout. Total stays under the 300 calls/min cap.
 
-### #24 — M14 research loop: snapshot → outcome → evaluation (2026-09-28, user directive; PRE-REGISTERED)
-- User: answers must come "from your data, not from assumptions about what
-  experts use". Committed BEFORE any result was seen.
+### #26 — Whole-market history; price band 250..2500 (2026-09-28, user directive)
+- The price band applies to the live pool, each minute's ranking and the
+  engine's liquidity gate.
+- History (`scripts/fetch_universe_history.py` → `data/universe_1y`): per-day
+  pools from the 20 prior sessions only (`pools.json`), 1-min bars for every
+  stock ever in a pool + NIFTY, BANK NIFTY, sector indices; paced, resumable.
+- `worker --replay DIR --scan-universe` replays with the live selection code
+  (`ReplayScanner` → `rank_volume_change` → `ActiveSet` → engine).
+- Stated differences: history knows every pool stock's volume each minute;
+  delisted stocks are missing; the sector map covers only curated names.
+
+## Research (pre-registered; results are records, not to be re-run)
+
+### #24 — Research loop: snapshot → outcome → evaluation (2026-09-28, user directive; PRE-REGISTERED)
+- Answers come from data, not assumptions. Rules committed before results.
 - Snapshots (`src/research/snapshots.py`): every scored stock every 5 min
-  live (15 min for the historical replay) + an event row when a stock moves
-  up into WATCH or better. Flat rows: group scores, sub-signals, raw %
-  values (day change, VWAP distance, ROC, RSI, ADX, volume acceleration),
-  setup states, confluence, sector, news, microstructure, time rules,
-  pre-rule score, strategy version + config hash + git commit. No prices.
-- Outcomes (`src/research/outcomes.py`): entry = open of the snapshot
-  minute's bar (scored only on closed bars, so no look-ahead); exit = close
-  after 5/15/30/60 min; MFE/MAE; excess vs NIFTY and the sector index;
-  net of an assumed 0.1% round trip. Windows past 15:25 are truncated
-  (left empty), missing bars → None.
-- Evaluation (`src/research/evaluate.py`), fixed rules: panel rows only;
-  metric = excess return vs NIFTY; 95% intervals by day-resampling
-  bootstrap; < 30 rows or < 20 days → INSUFFICIENT; FINDING only if the
-  interval excludes 0 at ≥ 2 horizons with one sign and the sign holds in
-  both chronological halves; else NO EVIDENCE.
-- The ten questions (report sections): (1) RVOL quintiles + within-movement
-  rank correlation; (2) sector CONFIRMED vs WEAK beyond technicals
-  (outcome minus same technical-score decile mean); (3) news POSITIVE vs
-  NO_RELEVANT_INFORMATION beyond technicals (live only); (4) confluence 3+
-  and 2 vs 1; (5) score bands 80+ vs 65-79 vs 50-64, per mode; (6) day
-  change buckets 2-3% and > 3% vs 1-2% (no explicit 2% rule exists; the
-  closest are the DAY momentum ROC ramp and the 0-3% movement ramp);
-  (7) SCALP microstructure top vs bottom tercile, 5/15 min (live only);
-  (8) lunch 11:30-13:30 vs neighbouring hours at the same pre-penalty
-  score ≥ 50 — the penalty is justified only if lunch is worse; (9) each
-  setup TRIGGERED vs no setup; (10) group correlation matrix + each
-  group's own rank correlation (redundant = corr > 0.7 and no separate value).
-- Anything else noticed is a hypothesis for later, not a finding.
-- Splits (chronological, never shuffled): history data/replay_1y —
-  explore 2025-11-03..2026-06-30, validate 2026-07-01..2026-08-31, test
-  2026-09-01..2026-09-28 (used once per proposed change). Live snapshots
-  from 2026-09-29 are a separate forward test on the scanned universe.
-- A change = new strategy_version, compared with the current one on the
-  held-out period; weights are never fitted on the whole dataset.
-- Strategy version bumped to 2026-09-29.m14 (M12/M13 changed scoring).
-- Operations: Windows Task Scheduler, weekdays 08:40 worker, 15:45 label +
-  reports (`scripts/live_day.ps1`, logs/). Runs only while the user is
-  logged on; the PC must be on.
-- Biases stated in every use: history = today's 25 large caps
-  (survivorship); no historical news/depth; one day is description, not
-  evidence.
+  live (15 min in historical replay) + an event row when a stock moves up
+  into WATCH or better; group scores, sub-signals, raw % values, setup
+  states, sector, news, microstructure, time rules, strategy version +
+  config hash + git commit. No prices. Short-only universe names excluded (#30).
+- Outcomes (`outcomes.py`): entry = open of the snapshot minute's bar; exit =
+  close after 5/15/30/60 min; MFE/MAE; excess vs NIFTY and sector; net of a
+  0.1% round trip; windows past 15:25 truncated.
+- Evaluation (`evaluate.py`): panel rows; metric = excess return vs NIFTY;
+  95% day-bootstrap intervals; < 30 rows or < 20 days → INSUFFICIENT;
+  FINDING only if the interval excludes 0 at ≥ 2 horizons with one sign and
+  the sign holds in both chronological halves; else NO EVIDENCE.
+- Ten questions: RVOL, sector beyond technicals, news beyond technicals,
+  confluence, score bands, day-change buckets, SCALP microstructure, lunch,
+  each setup vs none, group correlations.
+- Splits (chronological): explore 2025-11-03..2026-06-30, validate
+  2026-07-01..2026-08-31, test 2026-09-01..2026-09-28 (once per change).
+  Live snapshots from 2026-09-29 are a separate forward test.
+- A change = new strategy_version compared on held-out data; weights are
+  never fitted on the whole dataset.
+- Operations: Windows Task Scheduler weekdays — 08:40 worker (repeats every
+  5 min until 15:25 so a dead worker relaunches), 15:45 label + reports
+  (`scripts/live_day.ps1`, `logs/`). The PC must be on and plugged in.
+- Biases stated in every use: survivorship, no historical news/depth, one
+  day is description, not evidence.
 
-### #25 — News unweighted; setup 20% → 25% (2026-09-28, user directive)
-- User: "remove news weightage for now; replace it with setup (20% -> 25%).
-  I will google myself for any news for the stocks you display."
-- Groww's API has no news endpoint (checked growwapi 1.5.0 methods, feed
-  topics, docs and changelog 2026-09-28), so there is no better source to
-  weight yet.
-- Weights: setup 25, volume 20, movement 15, momentum 15, sector 10,
-  market 10, liquidity 5; news none. The news check still runs live and
-  shows on the card checklist and in snapshots (unweighted), so research
-  question 3 (does news add information beyond technicals) can still be
-  answered from data.
-- Strategy version 2026-09-29.m15. Research rows record the version; the
-  historical replay made under m14 is not mixed with m15 results.
+### #27 — Validation of three explore hypotheses (2026-09-29, PRE-REGISTERED, run once)
+- Explore finding (whole market, m15): score, RVOL, volume, momentum and
+  movement rank NEGATIVELY with forward excess return (the most extended
+  movers slightly mean-revert); nothing clears the 0.1% cost.
+- VALIDATE split, 44 days, 168k rows: T1 reweight away from extension —
+  FAIL (IC improves +0.004..0.006 but stays negative). T2 lunch penalty —
+  REMOVE (lunch not worse; confirmed in direction on the test split, 19
+  days, INSUFFICIENT but same sign) → strategy 2026-09-29.m16, penalty 0.
+  T3 pullback-only list — FAIL (unstable across halves; −0.07..−0.10%
+  after cost, not tradeable). Helpers: `src/research/experiments.py`.
 
-### #26 — M16 whole-market history; price band 250..2500 (2026-09-28, user directive)
-- User: "limiting to these 25 stocks is a big mistake, we need to consider
-  the entire universe for intraday"; then "consider price >= 250 and <= 2500
-  for now, leave the rest".
-- Price band applies everywhere: live scan pool (previous close), each
-  minute's ranking (last price), and the engine's liquidity gate ("price
-  above maximum"). Other filters unchanged (avg volume ≥ 5 lakh, avg
-  traded value ≥ ₹5 cr). Live pool on 2026-09-28: 625 → 337 stocks.
-  Curated names outside the band now fail the gate in replays.
-- History (`scripts/fetch_universe_history.py`, data/universe_1y):
-  daily candles for all 1,643 NSE EQ intraday stocks → per-day pool from
-  the 20 prior sessions only (`pools.json`) → 1-min bars for every stock
-  ever in a pool + NIFTY, BANK NIFTY, sector indices. Paced 150 calls/min,
-  resumable, run outside market hours.
-- Replay (`worker --replay DIR --scan-universe`): `ReplayScanner` builds
-  each minute's quotes from bars closed by that minute and feeds the live
-  `rank_volume_change` → `ActiveSet` (top 50, 10-min stay) →
-  `DynamicUniverse` → engine. Same selection code as live.
-- Differences stated in reports: history knows every pool stock's volume
-  each minute (live quotes volume for the top 100 movers only); today's
-  instrument list (delisted stocks missing); sector map covers only the
-  curated names (sector group drops out for the rest, never 0).
-- Research rules of #24 unchanged; the whole-market results go to
-  data/research/universe, the 25-stock results stay for comparison.
+### #28 — Exploration round 2: what predicts continuation among the top-50 movers? (2026-09-29, PRE-REGISTERED)
+EXPLORE split only, whole market, DAY panel rows, #24 rules. Q11 time of
+day (5 windows), Q12 distance above VWAP (0-0.5 vs > 2%), Q13 RSI (50-60 vs
+> 80), Q14 ADX quintiles, Q15 NIFTY direction (> 0.5 vs < −0.5%), Q16 5-min
+ROC quintiles; IC where ordered. Findings are hypotheses; any rule built
+from them is pre-registered and tested once on validate, then test. Not
+testable yet: first vs later breakout, pullback depth from the day high.
 
-### #27 — Validation tests of three explore hypotheses (2026-09-29, PRE-REGISTERED before running)
-- Data: data/research/universe (whole market, 250..2500, top 50/minute,
-  strategy m15), VALIDATE split 2026-07-01..2026-08-31 (44 days), panel
-  rows, metric = excess return vs NIFTY at 5/15/30/60 min. Each test runs
-  ONCE; the test split (Sep 2026) stays untouched.
-- T1 Less weight on extension. New blend of the recorded groups: volume
-  0.20→0.10, movement 0.15→0.075, momentum 0.15→0.075, the freed 0.25 to
-  setup (0.25→0.50); sector/market/liquidity unchanged (no tuning beyond
-  this halving rule). Compared with the m15 blend (`base_score`: before
-  time rules) on the same rows by within-day rank correlation (IC).
-  PASS = new-minus-old IC > 0 with paired day t > 2 at ≥ 2 horizons AND
-  the new IC not negative at 30 and 60 min.
-- T2 Lunch penalty. Same test as #24 Q8 (DAY, pre-penalty score ≥ 50,
-  11:30-13:30 vs 11:00-11:30 + 13:30-14:30). Remove the penalty unless the
-  verdict is "FINDING: worse" for lunch.
-- T3 Pullback-only list. DAY rows with EMA_PULLBACK or GAP_AND_GO
-  TRIGGERED vs all other DAY rows. PASS = "FINDING: better" under the #24
-  rule. Tradeable only if the mean return after the 0.1% cost is > 0 with
-  a 95% interval above 0 at 30 or 60 min (reported separately).
-- A pass here only makes a change a candidate: it is then checked once on
-  the test split, and any config change gets a new strategy version.
-- Results (run once, 2026-09-29, 44 days, 168k rows; reports/validate_m17.md):
-  T1 FAIL — the reweight improves the rank correlation consistently
-  (+0.004..0.006, paired t 2.0-3.3 at every DAY and SCALP horizon) but
-  the score still ranks negatively (DAY IC -0.013 at 30m, -0.006 at 60m).
-  T2 REMOVE penalty — lunch not worse (NO EVIDENCE). T3 FAIL — pullback
-  list +0.02-0.03% vs +0.006-0.012% at 15/30m but not stable across
-  halves; after the 0.1% cost -0.07..-0.10% (not tradeable).
-- T2 on the TEST split (run once, 2026-09-29; reports/test_t2_m17.md):
-  19 days → INSUFFICIENT under the 20-day rule, but lunch ≥ neighbouring
-  hours at every horizon (+0.005/+0.008/+0.015/+0.037% vs
-  +0.000/+0.003/+0.009/+0.035%), same direction as validation. Per the
-  pre-registered rule (remove unless lunch is worse) the penalty is
-  removed: strategy 2026-09-29.m16, lunch_penalty 0 (the rule is skipped
-  when the penalty is 0). The September sample is thin; live data keeps
-  checking it (Q8 in the live report).
+## Paper trading and backtesting (simulation only)
 
-### #28 — Exploration round 2: what predicts CONTINUATION among the top-50 movers? (2026-09-29, PRE-REGISTERED)
-- Why: #27 showed the top-50 movers slightly mean-revert over 5-60 min and
-  no reweighting fixes it. Round 2 looks for conditions under which a
-  mover keeps going. EXPLORE split only (2025-11-12..2026-06-30), whole
-  market, DAY panel rows, metric and verdict rules of #24.
-- Q11 Time of day: 09:15-09:45, 09:45-10:30, 10:30-11:30, 11:30-13:30,
-  13:30-15:00; each window vs all other rows.
-- Q12 Distance above VWAP (raw %): < 0, 0-0.5, 0.5-1, 1-2, > 2; verdict
-  0-0.5 vs > 2 (near VWAP vs stretched).
-- Q13 RSI (5-min bars, DAY): < 50, 50-60, 60-70, 70-80, > 80; verdict
-  50-60 vs > 80.
-- Q14 ADX quintiles; verdict top vs bottom quintile.
-- Q15 Market direction (NIFTY % since open): < -0.5, -0.5..0, 0..0.5,
-  > 0.5; verdict > 0.5 vs < -0.5.
-- Q16 5-min ROC (raw %) quintiles; verdict top vs bottom quintile.
-- Each also reports the within-day rank correlation (IC) where the
-  feature is ordered. Findings here are hypotheses; any rule built from
-  them is pre-registered and tested once on validate, then test.
-- Not testable from recorded data (would need new snapshot fields): first
-  vs later breakout of the day, pullback depth from the day high.
+### #20 — Recommendation strategy entry policy and journal (2026-09-28, updated 2026-10-08)
+- `RecommendationStrategy` turns the live ranked list into simulated LONG
+  entries (`paper.yaml entry`): category ≥ CANDIDATE, score ≥ 65, best setup
+  TRIGGERED, top 10, max 3 open, 1 trade/symbol/day, none after 15:00,
+  10 shares. Stop = fill − 0.25 × daily ATR (0.6% fallback), target 1.5R,
+  fixed at entry. Unoptimised starting values.
+- Journal: append-only JSONL per day (ENTRY / EXIT / MISSED), entries
+  immutable; trade id = hash(run, day, symbol, mode, signal time,
+  strategy_version); every record carries strategy_version, config hash,
+  git commit. Bump `strategy_version` on any scoring/setup/gate change so
+  results from different versions are never mixed.
+- First replay (2026-09-25): NO TRADES (max score 64.99) — recorded, the
+  policy was not loosened to manufacture trades.
 
 ### #29 — Simulated broker for paper trading and backtesting (2026-09-29, user directive)
-- Narrows #8/#20 further, as the user chose: an order interface now exists
-  (`src/paper/broker.py` `Broker`: place_order, cancel_order, positions,
-  on_tick) but **only simulated implementations**: `BacktestBroker`
-  (historical 1-min bars) and `PaperBroker` (live Groww ticks). No live
-  broker, no stub for one. Guards (tests/test_broker_interface.py): the
-  market-data `BrokerAdapter` still has no order methods; `src/paper` and
-  the Paper trading page never import `src/broker`/`growwapi`; nothing in
-  the repo calls anything order-like on a Groww client; every `Broker`
-  subclass is a `SimulatedBroker`.
-- One engine: the M10a `simulator.py` was removed. The recommendation
-  policy is now `RecommendationStrategy` on the same broker (journal and
-  daily report unchanged); `ORB` is the sample standalone strategy. The
-  same strategy class runs in backtest and paper mode (`TradingSession`).
-- Fill rules: market → next bar open (backtest) or next live tick (paper)
-  + slippage; limit → only when price trades THROUGH it (touch is no fill),
-  at the limit or a better gap open, no slippage; stop → touch triggers,
-  fills at trigger or a worse gap open + slippage; stops are checked
-  before targets in a bar (ambiguity = stop). Bracket exits are checked on
-  the rest of the entry bar. Changes vs #20: targets now need a trade
-  through (was touch) and get no slippage; square-off 15:15 at the last
-  price (was 15:20); fixed 0.05% charges replaced by the cost model.
-- Costs (`config/costs.yaml`, groww.in/pricing checked 2026-09-29):
-  brokerage min(Rs 20, 0.1%) with Rs 5 floor per order, STT 0.025% sell,
-  stamp 0.003% buy, NSE txn 0.00297% (BSE 0.00375%), SEBI 0.0001%, NSE IPFT
-  0.0001%, GST 18% on brokerage + txn + SEBI + IPFT. No rupee rounding.
-- Intraday rules: long-only (sells only reduce), per-symbol position value
-  cap, max open positions (held + pending), cash incl. charges checked at
-  placement and at the fill; square-off 15:15 cancels orders, closes all,
-  blocks entries until the next day.
-- Ledger: SQLite (`data/paper/*.sqlite`, gitignored), rows keyed by run;
-  rerunning a backtest id replaces it; a live worker restart starts a new
-  run (in-memory positions are not restored — known limit).
-- Metrics: every round trip after costs; max drawdown on the minute equity
-  curve; Sharpe from daily equity returns x sqrt(252), rf = 0, NOT
-  AVAILABLE with < 2 days. Measurements, not probabilities of profit.
-- First real run (ORB, cached 25 stocks, 2026-06-01..09-25, 83 days):
-  330 trades, win rate 29%, net -Rs 29,259 on Rs 1 lakh, charges Rs 18,023
-  (about Rs 55 per round trip on ~Rs 25k positions: brokerage dominates).
-  Unoptimised sample, not evidence for or against ORB.
+- `Broker` interface (place_order, cancel_order, positions, on_tick) with
+  only simulated implementations: `BacktestBroker` (historical 1-min bars)
+  and `PaperBroker` (live Groww ticks). Guards in
+  `tests/test_broker_interface.py`.
+- The same `Strategy` class runs in backtest and paper mode
+  (`TradingSession`). Strategies: `recommendation` (#20), `orb` (#30).
+- Fills: market → next bar open (backtest) / next live tick (paper) +
+  slippage; limit → only when price trades through it, no slippage; stop →
+  touch triggers, fills at trigger or a worse gap open + slippage; stop
+  before target when one bar touches both. Square-off 15:15 at the last
+  price; no entries after.
+- Costs (`config/costs.yaml`, groww.in/pricing 2026-09-29): brokerage
+  min(₹20, 0.1%) with ₹5 floor, STT 0.025% sell, stamp 0.003% buy, NSE txn
+  0.00297%, SEBI 0.0001%, IPFT 0.0001%, GST 18%.
+- Limits: per-symbol position value, max open positions, capital incl.
+  charges at placement and at the fill. Directions and restarts: #30.
+- Metrics: every round trip after costs; max drawdown; Sharpe from daily
+  returns (N/A with < 2 days). Measurements, not probabilities of profit.
+- First backtest (ORB long only, 25 stocks, 83 days to 2026-09-25): 330
+  trades, win rate 29%, net −₹29,259 on ₹1 lakh, charges ₹18,023.
 
-### #30 — Short side for paper trading; restart resume; day report (2026-10-08, user request)
-Supersedes the long-only parts of #11 and #29 **for the simulated broker and
-ORB only**. The recommendation engine, its scoring and the research loop stay
-long-only (#11, #24): a short-side engine would be a new, untested model.
-- User 2026-10-08: "add short positions too … for any open positions make
-  sure you set up target, stoploss and record the net profit/loss on exit;
-  keep running this strategy and record the results until end of day".
-- Broker: signed positions (long > 0, short < 0). An order that reduces the
-  current position is an exit, everything else opens/adds; exits may not
-  flip. Opening a short needs `broker.allow_short` (paper.yaml: true).
-  Bracket levels mirror for shorts (STOP buy above the fill, LIMIT buy
-  below). Square-off buys shorts back. Margin: a short blocks its full
-  notional, like a long (MIS leverage ignored; conservative). Costs are by
-  side as before (STT on the sell leg = a short's entry).
-- Trades record `direction`, `stop_loss`, `target` (ledger columns added in
-  place to older files).
-- ORB `allow_short`: the first close below the range low → short, stop at
-  ~the range high, target `target_r` x risk below. One attempt per symbol
-  per day, whichever side breaks first.
-- Universe: `scan.short_top_n` down-movers (below the previous close,
-  mirrored movement score: change, position near the low, below VWAP) are
-  added after the long top N; `short_movers_per_cycle` are quoted each
-  minute (130 quotes/min total, inside the 200 budget). Short-only names are
-  removed from the research snapshots so the pre-registered population is
-  unchanged.
-- Live paper runs several strategies side by side (`paper.yaml strategies:
-  [recommendation, orb]`), one broker and one ledger run each, sharing one
-  SQLite connection. Run id is one per strategy per day
-  (`paper:<day>:<strategy>`): a restarted worker RESUMES it — fills are
-  replayed to rebuild positions and cash, open stop/target orders are
-  re-armed, stale pending entries cancelled, and the strategy is told what
-  it already traded. Replaces #29's "a restart starts a new run". Open
-  positions are pinned in the dynamic universe so their prices keep coming.
-- `reports/paper_<day>.md`: every trade with direction, entry, stop,
-  target, exit, exit reason, gross/charges/net, per strategy and in total;
-  written when the worker stops and by `scripts/paper_day_report.py`
-  (live_day.ps1 label phase). live_day.ps1 starts the worker with `--paper`.
-- Caveat: #29's ORB backtest (long only, 83 days) lost money after costs;
-  shorts are not evidence of an edge either. Paper results are measurements.
+### #30 — Short side, restart resume, day report (2026-10-08, user request)
+- User: "add short positions too … for any open positions set up target,
+  stoploss and record the net profit/loss on exit; keep running and record
+  the results until end of day".
+- Broker: signed positions; an order reducing the position is an exit
+  (never flips). Shorts need `broker.allow_short` (on). Short brackets
+  mirror (STOP buy above, LIMIT buy below); square-off buys back. A short
+  blocks its full notional as margin (MIS leverage ignored). Trades record
+  direction, stop_loss, target.
+- ORB (`orb.allow_short`): first close above the 15-min range high → long,
+  below the low → short; stop at about the other side of the range, target
+  2R, ₹500 risk per trade; one attempt per symbol per day.
+- Universe: the top 15 down-movers (mirrored movement score) are added after
+  the long universe (`scan.short_top_n`) and excluded from research.
+- Live: `paper.yaml strategies: [recommendation, orb]`, one broker + one
+  ledger run each (`paper:<day>:<strategy>`). A restarted worker RESUMES the
+  run: positions, cash, closed trades and open stop/target orders are rebuilt
+  from the ledger; open positions stay subscribed.
+- `reports/paper_<day>.md` (worker stop + 15:45 task) lists each trade's
+  entry, stop, target, exit, reason and net P&L. `live_day.ps1` starts the
+  worker with `--paper`.

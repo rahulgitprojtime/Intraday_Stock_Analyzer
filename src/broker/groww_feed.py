@@ -1,4 +1,4 @@
-"""Groww live feed wrapper — M7 (spec 2026-09-28 §2-3, §6).
+"""Groww live feed wrapper — M7 (DECISIONS #9, #17).
 
 The only feed code that touches `growwapi`. Read-only market data: LTP,
 market depth and index value; order/position feeds are never subscribed

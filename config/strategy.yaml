@@ -1,20 +1,17 @@
-# Scoring weights and signal thresholds. All illustrative defaults —
-# not tuned/optimized. See DECISIONS.md and Phase 11 of the spec: never
-# optimize weights on the full historical dataset.
+# Recommendation scoring (long only, DECISIONS #11). Illustrative defaults,
+# unvalidated; change only through pre-registered tests (DECISIONS #24) —
+# never optimise on the full historical dataset.
 
-# Identifies the recommendation methodology in paper-trade journals (M10).
-# Bump on any change to scoring, setups, gates, sector or news rules, so
-# results from different versions are never mixed (DECISIONS #20).
+# Identifies the methodology in research rows and paper journals. Bump on
+# any change to scoring, setups, gates, sector or news rules, so results
+# from different versions are never mixed (DECISIONS #20).
 strategy_version: "2026-09-29.m16"
 
-# M6 baseline quantitative scoring model (DECISIONS #14). Temporary
-# engineering defaults, NOT claimed optimal; M10 validates. Weights exist
-# only for components that are implemented; future components (sector M8,
-# qualitative M9) get weights when they ship. Unavailable components are
-# excluded from the blend, never defaulted.
+# Group weights (DECISIONS #22, #25). A group with no data drops out of the
+# weighted average; it is never counted as 0.
 engine:
-  weights:                 # positive, must sum to 1.0 (M12, DECISIONS #22, user-chosen)
-    setup: 0.25              # was 0.20; +0.05 from news (user, 2026-09-28)
+  weights:                 # positive, must sum to 1.0
+    setup: 0.25
     volume: 0.20
     movement: 0.15            # PRICE MOVEMENT (key avoids the word "price": no levels, #11)
     momentum: 0.15
@@ -48,21 +45,6 @@ recommendation:
     WATCH: 50
     NEUTRAL: 35            # below this -> AVOID
 
-indicators:
-  ema_periods: [9, 20, 50]
-  rsi_period: 14
-  atr_period: 14
-  adx_period: 14
-  bollinger_period: 20
-  bollinger_std: 2.0
-
-rvol:
-  method: time_of_day_adjusted     # time_of_day_adjusted | simple_ratio
-  lookback_days: 20
-
-regime:
-  volatility_lookback_days: 20
-
 # Sector confirmation (M8). rs = sector index % since open minus NIFTY's;
 # peers = other universe members of the sector up since open.
 # CONFIRMED: rs >= confirm_rs and (fewer than min_peers peers, or peer
@@ -80,7 +62,7 @@ sector:
 # Live-feed microstructure (M7, SCALP only). Imbalance = (bid qty - ask
 # qty) / total over the depth payload; velocity = ticks in the last
 # minute / 5-min average. Linear ramps to 0-100, blended by weight (sum 1).
-# Illustrative defaults, unvalidated (M10).
+# Illustrative defaults, unvalidated.
 microstructure:
   weights:
     imbalance: 0.6

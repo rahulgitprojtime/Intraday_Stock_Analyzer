@@ -1,4 +1,4 @@
-"""Live feed store — M7 (spec 2026-09-28 §3).
+"""Live feed store — M7 (DECISIONS #17).
 
 Thread-safe latest-value store fed by `LiveFeed`: the SDK callback thread
 counts ticks, the poller thread writes latest LTP/depth. The worker reads

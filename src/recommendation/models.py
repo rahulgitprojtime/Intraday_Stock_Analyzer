@@ -1,4 +1,4 @@
-"""Recommendation data model — M6 (spec §8, DECISIONS #14).
+"""Recommendation data model (DECISIONS #14).
 
 `None` / status "unavailable" means not computed — never fabricated.
 Blocks for future components (sector M8, qualitative M9) exist now so the

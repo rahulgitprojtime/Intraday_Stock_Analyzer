@@ -343,3 +343,19 @@ testable yet: first vs later breakout, pullback depth from the day high.
 - All thresholds are starting values, unvalidated. Charges are about ₹56 per
   round trip on a ₹25k position, a large share of a 1.5R scalp; backtest
   before trusting any of it.
+
+### #32 — Same-bar signals take slots strongest first, not alphabetically (2026-10-08, user request)
+- Found in the 8 Oct backtest: with 3 open positions and symbols checked
+  A→Z, names starting A-C took most slots whenever several stocks signalled
+  on the same bar (scalp: 83 of 118 trades).
+- Now `DirectionalStrategy.on_bars` collects every signal for the bar, then
+  places orders strongest first: strength = % move since the previous close
+  in the trade's direction (mirrored for shorts); the symbol breaks ties.
+  The index move is the same for every stock on a bar, so ranking "relative
+  to NIFTY" gives the same order and is not subtracted. Each signal records
+  `strength_pct`.
+- Not tuned, not validated. 8 Oct rerun: scalp −₹8,833 → −₹8,360 (A-C share
+  83/118 → 29/113); trend 35 → 6 trades (−₹2,200 → −₹959) because the three
+  strongest movers at 09:45 had wide ATR stops and, with no time exit, held
+  all slots for hours. Whether strongest-first helps is a question for the
+  multi-day backtest on the validate/test splits (#24).

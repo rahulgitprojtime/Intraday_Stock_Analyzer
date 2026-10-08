@@ -34,7 +34,7 @@ Last updated: 2026-10-08. Decisions: `DECISIONS.md`. Open work: `TODO.md`.
 | Scoring | group score (setup 25, volume 20, movement 15, momentum 15, sector 10, market 10, liquidity 5), confluence, time rules, hard rejects, sector verdict, news checklist | #14 #15 #18 #19 #22 #25 |
 | Dashboard | Streamlit reads state.json; Paper trading page reads the ledgers | #8 |
 | Research | snapshots → outcomes → pre-registered evaluation; whole-market history | #24 #26 #27 #28 |
-| Simulator | broker (long/short, brackets, costs, limits, square-off, resume), scalp + trend (live), ORB + recommendation (backtests), SQLite ledger, day report | #20 #29 #30 #31 |
+| Simulator | broker (long/short, brackets, costs, limits, square-off, resume), scalp + trend (live; same-bar signals ranked strongest first), ORB + recommendation (backtests), SQLite ledger, day report | #20 #29 #30 #31 #32 |
 
 ## What the data says so far
 - Whole-market explore (155 days): among the day's movers the most extended
@@ -44,6 +44,9 @@ Last updated: 2026-10-08. Decisions: `DECISIONS.md`. Open work: `TODO.md`.
   failed; the lunch penalty was removed (strategy 2026-09-29.m16).
 - ORB long-only backtest (83 days, 25 stocks): −₹29,259 on ₹1 lakh after
   ₹18,023 charges (#29). No strategy has a demonstrated edge yet.
+- 8 Oct whole-market backtest (bearish day, shorts only, ranked #32): scalp
+  −₹8,360 on 113 trades (charges ₹6,233 > gross loss); trend −₹959 on 6
+  trades — strongest movers' wide stops held all 3 slots for hours.
 
 ## Known issues
 - Worker exits on network loss (DNS) and relaunches fail at login until

@@ -245,3 +245,27 @@ def test_backtest_bias_from_index_bars_when_no_worker_sentiment():
         session.step(b.ts + timedelta(minutes=1), [b, n, bk])
     assert [s["direction"] for s in strat.signals] == ["LONG"]
     assert all(o.symbol == "AAA" for o in session.broker.orders())   # indices never traded
+
+
+# -- ranking when several stocks signal on the same bar ---------------------------------------
+
+def test_same_bar_signals_fill_the_slots_strongest_first_not_alphabetically():
+    """Four identical breakouts on one bar, three free slots: the stocks that
+    have moved furthest from their previous close (in the trade's direction)
+    win, whatever their names."""
+    strat = ScalpPriceAction(ScalpConfig())
+    session = TradingSession(strat, BacktestBroker(CFG, FREE))      # max_open_positions = 3
+    session.start_day(DAY)
+    session.ctx.meta = {"sentiment": {"bias": "BULLISH"}}
+    prev = {"AAA": 100.0, "BBB": 99.0, "CCC": 98.0, "ZZZ": 97.0}   # ZZZ strongest, AAA weakest
+    session.ctx.prev_close.update(prev)
+    series = {s: base_then_breakout() for s in prev}
+    for i in range(len(series["AAA"])):
+        step = [Bar(s, b[i].ts, b[i].open, b[i].high, b[i].low, b[i].close, b[i].volume)
+                for s, b in series.items()]
+        session.step(step[0].ts + timedelta(minutes=1), step)
+    assert [s["symbol"] for s in strat.signals] == ["ZZZ", "CCC", "BBB", "AAA"]
+    assert [s["strength_pct"] for s in strat.signals] == sorted(
+        (s["strength_pct"] for s in strat.signals), reverse=True)
+    assert {o.symbol for o in session.broker.orders() if o.status.value != "REJECTED"} == \
+        {"ZZZ", "CCC", "BBB"}

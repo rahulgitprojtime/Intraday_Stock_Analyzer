@@ -104,7 +104,8 @@ class DirectionalStrategy(Strategy):
             return
         indices = set(ctx.meta.get("indices") or ()) | set(INDEX_SYMBOLS)
         busy = set(ctx.broker.positions()) | {o.symbol for o in ctx.broker.open_orders()}
-        for sym in sorted(bars):
+        candidates = []
+        for sym in bars:
             if sym in indices or sym in busy:
                 continue
             if self._trades.get(sym, 0) >= self.max_trades_per_symbol:
@@ -123,6 +124,11 @@ class DirectionalStrategy(Strategy):
             qty = min(int(self.risk_per_trade // risk), int(self.max_position_value // ref))
             if risk <= 0 or qty < 1:
                 continue
+            # strength: move since the previous close in the trade's direction
+            candidates.append(((oriented[-1].close / k - 1) * 100, sym, setup, risk, qty))
+        # Slots are limited: the strongest movers get them first (name breaks ties).
+        candidates.sort(key=lambda c: (-c[0], c[1]))
+        for strength, sym, setup, risk, qty in candidates:
             side = Side.BUY if direction == "LONG" else Side.SELL
             o = ctx.broker.place_order(sym, side, qty, OrderType.MARKET,
                                        tag=f"{self.entry_tag}:{setup}",
@@ -130,6 +136,7 @@ class DirectionalStrategy(Strategy):
                                                        round(self.target_r * risk, 4)))
             self.signals.append({"at": as_of.isoformat(), "symbol": sym, "direction": direction,
                                  "setup": setup, "risk": round(risk, 4), "qty": qty,
+                                 "strength_pct": round(strength, 4),
                                  "status": o.status.value, "reason": o.reason})
             if o.status is not OrderStatus.REJECTED:
                 self._trades[sym] = self._trades.get(sym, 0) + 1

@@ -23,8 +23,9 @@ backtest_ledger: data/paper/backtests.sqlite # scripts/backtest.py and paper_rep
 
 broker:                       # simulated broker, shared by backtest and paper mode
   starting_capital: 100000    # rupees; cash is debited by fills and charges
-  max_position_value: 25000   # per symbol, at placement price
-  max_open_positions: 3       # held + pending-entry symbols
+  max_position_value: 49000   # per symbol, at placement price; 2 x 49k shorts fit the
+                              # 2x-notional short margin on 1 lakh (DECISIONS #33)
+  max_open_positions: 2       # held + pending-entry symbols (#33: fewer, larger trades)
   # Signal at the close of minute T -> market fill at the next bar's open
   # (backtest) or the next live tick (paper). A bar touching both stop and
   # target counts as the stop. A gap through the stop fills at the open.
@@ -68,11 +69,18 @@ scalp:                        # src/paper/strategies/scalp.py — price action o
   min_bars: 10                # bars of today before any signal
   stop_buffer: 0.1            # x average range beyond the structure
   max_risk_mult: 4.0          # skip when the stop is wider than this x average range
-  target_r: 1.5
+  target_r: 2.0               # #33: 2R minimum (was 1.5)
   max_hold_minutes: 15        # scalps: time exit if neither stop nor target
-  risk_per_trade: 500         # rupees at the stop (before costs/slippage)
-  max_position_value: 25000
-  max_trades_per_symbol: 2
+  risk_per_trade: 1000        # rupees at the stop (before costs/slippage)
+  max_position_value: 49000
+  max_trades_per_symbol: 1
+  max_trades_per_day: 20      # #33: 113 scalps a day was churn
+  # shared entry/exit rules (DECISIONS #33), starting values, unvalidated
+  stop_atr_mult: 1.0          # stop >= 1 x ATR(14) of 1-min bars (noise floor)
+  min_stop_pct: 0.15          # stop >= 0.15% of the entry price
+  rs_filter: true             # long beats NIFTY / short lags it, since prev close
+  structure_filter: true      # no short on higher lows / long on lower highs
+  min_reward_cost_mult: 3     # skip when target profit < 3 x round-trip charges
   first_entry: "09:25"
   last_entry: "15:00"
 
@@ -85,8 +93,17 @@ trend:                        # src/paper/strategies/trend.py — trades > 10-15
   min_5m_bars: 3
   ext_mult: 1.0
   target_r: 2.0
-  risk_per_trade: 500
-  max_position_value: 25000
+  risk_per_trade: 1000
+  max_position_value: 49000
   max_trades_per_symbol: 2
+  max_hold_minutes: 120       # #33: time stop (was none)
+  stall_minutes: 30           # #33: exit when not +0.5R after 30 min, freeing the slot
+  stall_r: 0.5
+  # shared entry/exit rules (DECISIONS #33), starting values, unvalidated
+  stop_atr_mult: 1.0          # stop >= 1 x ATR(14) of 1-min bars (noise floor)
+  min_stop_pct: 0.15          # stop >= 0.15% of the entry price
+  rs_filter: true             # long beats NIFTY / short lags it, since prev close
+  structure_filter: true      # no short on higher lows / long on lower highs
+  min_reward_cost_mult: 3     # skip when target profit < 3 x round-trip charges
   first_entry: "09:30"
   last_entry: "14:30"

@@ -359,3 +359,32 @@ testable yet: first vs later breakout, pullback depth from the day high.
   strongest movers at 09:45 had wide ATR stops and, with no time exit, held
   all slots for hours. Whether strongest-first helps is a question for the
   multi-day backtest on the validate/test splits (#24).
+
+### #33 — Cost-aware entries, noise-floor stops, RS + structure filters, slot release (2026-10-08, user request)
+- Prompted by the 8 Oct backtest review: charges (~₹55 per round trip)
+  exceeded the scalp edge, 113 scalps/day was churn, 1-min stops sat inside
+  normal noise, and trend's ATR-stopped positions with no time exit held
+  slots for hours. Shared `EntryRules` in `src/paper/strategies/common.py`,
+  values in `paper.yaml` (scalp and trend), starting values, unvalidated:
+  - Sizing (user choice): ₹1,000 risk per trade, ≤ ₹49,000 per position,
+    2 open positions. ₹49k, not ₹50k: shorts hold back 2x notional, so two
+    ₹50k shorts do not fit ₹1 lakh.
+  - Cost math: scalp target 2R (was 1.5R; trend already 2R); skip any trade
+    whose target profit is < 3x its round-trip charges; scalp ≤ 20 trades a
+    day and 1 per stock (was 2).
+  - Stop noise floor: stop distance = max(setup stop, 1 x ATR(14) of 1-min
+    bars, 0.15% of price). Size still = risk / stop.
+  - Relative strength: long only when the stock's move since the previous
+    close beats NIFTY's, short only when it lags it (NIFTY from the worker's
+    sentiment live, NIFTY bars in backtests; filter off when unknown).
+  - Structure: no entry when the last two swing highs on the entry
+    timeframe (scalp 1-min, trend completed 5-min bars) are falling on the
+    oriented chart — for a short that is higher lows on the real chart.
+  - Trend slot release: STALL_EXIT when a position has not been +0.5R in its
+    favour within 30 min; time stop after 120 min (was none).
+  - Vetoed signals are recorded with status SKIPPED and the reason.
+- Slippage unchanged (5 bps against us on market and stop fills): the 8 Oct
+  stop exits were a median 5.0 bps past the stop, as configured; the larger
+  ones (6-18 bps) were bars opening beyond the stop, which fill at the open.
+- Evaluated once against the #32 strategies on the validate split (#24);
+  result below.

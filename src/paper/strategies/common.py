@@ -11,11 +11,19 @@
 - Only stocks moving with the bias are considered (long: above the previous
   close; short: below it).
 - Size = risk budget / stop distance, capped by the position value limit.
+- EntryRules (DECISIONS #33), each off unless configured: stop widened to a
+  noise floor (1-min ATR, % of price); long only when beating NIFTY since
+  the previous close, short only when lagging it; no entry against the
+  entry timeframe's structure (lower swing highs on the oriented chart =
+  higher lows on a short's real chart); skip a trade whose target profit
+  is under `min_reward_cost_mult` x its round-trip charges; a daily trade
+  cap; a stall exit freeing the slot of a position that has not moved
+  `stall_r` x R in its favour within `stall_minutes`.
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, time, timedelta
 
 from src.data.models import Candle, Exchange, Instrument, Segment
@@ -26,6 +34,47 @@ from src.quantitative.daily_prep import DailyPrep
 
 INDEX_SYMBOLS = ("NIFTY", "BANKNIFTY")
 TIME_EXIT = "TIME_EXIT"
+STALL_EXIT = "STALL_EXIT"
+
+
+@dataclass(frozen=True)
+class EntryRules:
+    """Shared entry/exit rules, each off at its default (DECISIONS #33)."""
+    stop_atr_mult: float = 0.0          # stop >= this x ATR(14) of 1-min bars
+    min_stop_pct: float = 0.0           # stop >= this % of the entry price
+    rs_filter: bool = False             # long beats NIFTY / short lags it, since prev close
+    structure_filter: bool = False      # no entry on lower swing highs (oriented chart)
+    min_reward_cost_mult: float = 0.0   # target profit >= this x round-trip charges
+    max_trades_per_day: int | None = None
+    stall_minutes: float | None = None  # exit when not +stall_r x R by then
+    stall_r: float = 0.5
+
+
+def swing_points(bars) -> tuple[list[int], list[int]]:
+    """Indices of 2-bar fractal swing highs and lows (needs 2 bars each side)."""
+    highs, lows = [], []
+    for i in range(2, len(bars) - 2):
+        h, lo = bars[i].high, bars[i].low
+        if all(h > bars[j].high for j in (i - 2, i - 1, i + 1, i + 2)):
+            highs.append(i)
+        if all(lo < bars[j].low for j in (i - 2, i - 1, i + 1, i + 2)):
+            lows.append(i)
+    return highs, lows
+
+
+def lower_highs(bars, lookback: int = 20) -> bool:
+    """The last two swing highs within `lookback` bars are falling."""
+    window = bars[-lookback:]
+    highs, _ = swing_points(window)
+    return len(highs) >= 2 and window[highs[-1]].high < window[highs[-2]].high
+
+
+def atr(bars, n: int = 14) -> float:
+    """Average true range of the last `n` bars (fewer early in the day)."""
+    tr = [b.high - b.low if i == 0 else
+          max(b.high - b.low, abs(b.high - bars[i - 1].close), abs(b.low - bars[i - 1].close))
+          for i, b in enumerate(bars)][-n:]
+    return sum(tr) / len(tr) if tr else 0.0
 
 
 def mirror_bar(b: Bar, k: float) -> Bar:
@@ -45,6 +94,22 @@ def to_candles(bars: list[Bar]) -> list[Candle]:
         return []
     inst = Instrument(bars[0].symbol, Exchange.NSE, Segment.CASH)
     return [Candle(inst, 1, b.ts, b.open, b.high, b.low, b.close, b.volume) for b in bars]
+
+
+def rules_from(cfg) -> EntryRules:
+    """EntryRules from a strategy config's matching fields (absent = off)."""
+    return EntryRules(**{k: getattr(cfg, k) for k in EntryRules.__dataclass_fields__
+                         if hasattr(cfg, k)})
+
+
+def nifty_change_pct(ctx: StrategyContext) -> float | None:
+    """NIFTY % change vs its previous close: the worker's sentiment when live,
+    else NIFTY bars in the context (backtests); None when unknown."""
+    sent = ctx.meta.get("sentiment") or {}
+    if sent.get("nifty_change_pct") is not None:
+        return float(sent["nifty_change_pct"])
+    b, prev = ctx.bars("NIFTY"), ctx.prev_close.get("NIFTY")
+    return (b[-1].close / prev - 1) * 100 if b and prev else None
 
 
 def market_bias(ctx: StrategyContext, cfg: SentimentConfig = SentimentConfig()) -> str:
@@ -72,11 +137,13 @@ class DirectionalStrategy(Strategy):
     def __init__(self, risk_per_trade: float, max_position_value: float, target_r: float,
                  max_trades_per_symbol: int, first_entry: time, last_entry: time,
                  max_hold_minutes: float | None = None,
-                 sentiment_cfg: SentimentConfig = SentimentConfig()) -> None:
+                 sentiment_cfg: SentimentConfig = SentimentConfig(),
+                 rules: EntryRules = EntryRules()) -> None:
         self.risk_per_trade, self.max_position_value = risk_per_trade, max_position_value
         self.target_r, self.max_trades_per_symbol = target_r, max_trades_per_symbol
         self.first_entry, self.last_entry = first_entry, last_entry
         self.max_hold_minutes, self.sentiment_cfg = max_hold_minutes, sentiment_cfg
+        self.rules = rules
         self._trades: dict[str, int] = {}
         self._entered_at: dict[str, datetime] = {}
         self.signals: list[dict] = []          # every entry decision, for reports/tests
@@ -99,6 +166,7 @@ class DirectionalStrategy(Strategy):
 
     def on_bars(self, as_of: datetime, bars: dict, ctx: StrategyContext) -> None:
         self._time_exits(as_of, ctx)
+        self._stall_exits(as_of, ctx)
         direction = trade_direction(market_bias(ctx, self.sentiment_cfg))
         if direction is None or not self.first_entry <= as_of.time() <= self.last_entry:
             return
@@ -121,14 +189,29 @@ class DirectionalStrategy(Strategy):
             if sig is None:
                 continue
             setup, ref, risk = sig
-            qty = min(int(self.risk_per_trade // risk), int(self.max_position_value // ref))
-            if risk <= 0 or qty < 1:
+            r = self.rules
+            risk = max(risk, r.stop_atr_mult * atr(oriented), r.min_stop_pct / 100 * ref)
+            qty = min(int(self.risk_per_trade // risk), int(self.max_position_value // ref)) \
+                if risk > 0 else 0
+            if qty < 1:
                 continue
             # strength: move since the previous close in the trade's direction
-            candidates.append(((oriented[-1].close / k - 1) * 100, sym, setup, risk, qty))
+            strength = (oriented[-1].close / k - 1) * 100
+            why = self._veto(strength, direction, oriented, ref, risk, qty, ctx)
+            if why:
+                self.signals.append({"at": as_of.isoformat(), "symbol": sym,
+                                     "direction": direction, "setup": setup,
+                                     "risk": round(risk, 4), "qty": qty,
+                                     "strength_pct": round(strength, 4),
+                                     "status": "SKIPPED", "reason": why})
+                continue
+            candidates.append((strength, sym, setup, risk, qty))
         # Slots are limited: the strongest movers get them first (name breaks ties).
         candidates.sort(key=lambda c: (-c[0], c[1]))
         for strength, sym, setup, risk, qty in candidates:
+            if self.rules.max_trades_per_day is not None and \
+                    sum(self._trades.values()) >= self.rules.max_trades_per_day:
+                break
             side = Side.BUY if direction == "LONG" else Side.SELL
             o = ctx.broker.place_order(sym, side, qty, OrderType.MARKET,
                                        tag=f"{self.entry_tag}:{setup}",
@@ -146,7 +229,63 @@ class DirectionalStrategy(Strategy):
                direction: str):
         raise NotImplementedError
 
-    # -- time stop ------------------------------------------------------------------
+    def structure_bars(self, oriented: list[Bar]):
+        """Bars of the entry timeframe for the structure filter (1-min here)."""
+        return oriented
+
+    # -- entry rules (DECISIONS #33) ---------------------------------------------------
+
+    def _veto(self, strength, direction, oriented, ref, risk, qty, ctx) -> str | None:
+        r = self.rules
+        if r.rs_filter:
+            nifty = nifty_change_pct(ctx)
+            if nifty is not None:
+                index_strength = nifty if direction == "LONG" else -nifty
+                if strength <= index_strength:
+                    return ("not beating NIFTY" if direction == "LONG"
+                            else "not lagging NIFTY")
+        if r.structure_filter and lower_highs(self.structure_bars(oriented)):
+            return ("lower highs" if direction == "LONG"
+                    else "higher lows (lower highs on the mirrored chart)")
+        if r.min_reward_cost_mult:
+            costs = ctx.broker.costs
+            charges = (costs.charges("BUY", qty, ref).total
+                       + costs.charges("SELL", qty, ref).total)
+            reward = qty * self.target_r * risk
+            if reward < r.min_reward_cost_mult * charges:
+                return (f"target Rs {reward:.0f} < {r.min_reward_cost_mult:g} x "
+                        f"charges Rs {charges:.0f}")
+        return None
+
+    # -- time and stall exits ----------------------------------------------------------
+
+    def _exit(self, sym, pos, ctx, tag) -> None:
+        if any(o.tag in (TIME_EXIT, STALL_EXIT) for o in ctx.broker.open_orders(sym)):
+            return
+        for o in ctx.broker.open_orders(sym):
+            ctx.broker.cancel_order(o.id, tag.lower().replace("_", " "))
+        side = Side.SELL if pos.quantity > 0 else Side.BUY
+        ctx.broker.place_order(sym, side, abs(pos.quantity), OrderType.MARKET, tag=tag)
+
+    def _stall_exits(self, as_of: datetime, ctx: StrategyContext) -> None:
+        """Free the slot of a position that has not moved stall_r x R its way."""
+        r = self.rules
+        if not r.stall_minutes:
+            return
+        for sym, pos in ctx.broker.positions().items():
+            t0 = self._entered_at.get(sym)
+            if t0 is None or as_of - t0 < timedelta(minutes=r.stall_minutes):
+                continue
+            stops = [o.trigger_price for o in ctx.broker.open_orders(sym)
+                     if o.type is OrderType.STOP and o.trigger_price]
+            since = [b for b in ctx.bars(sym) if b.ts >= t0]
+            if not stops or not since:
+                continue
+            risk = abs(pos.avg_price - stops[0])
+            best = (max(b.high for b in since) - pos.avg_price if pos.quantity > 0
+                    else pos.avg_price - min(b.low for b in since))
+            if risk > 0 and best < r.stall_r * risk:
+                self._exit(sym, pos, ctx, STALL_EXIT)
 
     def _time_exits(self, as_of: datetime, ctx: StrategyContext) -> None:
         if not self.max_hold_minutes:
@@ -156,9 +295,4 @@ class DirectionalStrategy(Strategy):
             t0 = self._entered_at.get(sym)
             if t0 is None or as_of - t0 < limit:
                 continue
-            if any(o.tag == TIME_EXIT for o in ctx.broker.open_orders(sym)):
-                continue
-            for o in ctx.broker.open_orders(sym):
-                ctx.broker.cancel_order(o.id, "time exit")
-            side = Side.SELL if pos.quantity > 0 else Side.BUY
-            ctx.broker.place_order(sym, side, abs(pos.quantity), OrderType.MARKET, tag=TIME_EXIT)
+            self._exit(sym, pos, ctx, TIME_EXIT)

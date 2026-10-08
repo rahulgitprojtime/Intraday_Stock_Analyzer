@@ -1,5 +1,6 @@
 """Market sentiment, scalp price action and intraday trend — DECISIONS #31. SIMULATION ONLY."""
 
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 
 import pytest
@@ -25,7 +26,7 @@ FREE = CostModel.from_dict(RAW | {
     "brokerage": {"flat_per_order": 0, "pct": 0, "min_per_order": 0}, "stt_sell_pct": 0,
     "stamp_duty_buy_pct": 0, "exchange_txn_pct": {"NSE": 0}, "sebi_fee_pct": 0,
     "ipft_pct": {"NSE": 0}})
-CFG = BrokerConfig(100_000, 25_000, 3, 0, time(15, 15), allow_short=True)
+CFG = BrokerConfig(100_000, 49_000, 3, 0, time(15, 15), allow_short=True)   # sizes per #33
 DAY = date(2026, 10, 9)
 OPEN = datetime.combine(DAY, time(9, 15))
 
@@ -141,7 +142,8 @@ def test_scalp_goes_long_on_a_bullish_breakout_with_stop_and_target():
     assert (sig["direction"], sig["setup"]) == ("LONG", "TIGHT_BREAKOUT")
     [t] = broker.trades
     assert (t["direction"], t["exit_tag"]) == ("LONG", "TARGET")
-    assert t["target"] - t["entry_price"] == pytest.approx(1.5 * (t["entry_price"] - t["stop_loss"]))
+    assert t["target"] - t["entry_price"] == pytest.approx(
+        ScalpConfig().target_r * (t["entry_price"] - t["stop_loss"]))
 
 
 def test_scalp_shorts_the_mirror_setup_in_a_bearish_market():
@@ -250,11 +252,11 @@ def test_backtest_bias_from_index_bars_when_no_worker_sentiment():
 # -- ranking when several stocks signal on the same bar ---------------------------------------
 
 def test_same_bar_signals_fill_the_slots_strongest_first_not_alphabetically():
-    """Four identical breakouts on one bar, three free slots: the stocks that
+    """Four identical breakouts on one bar, two free slots: the stocks that
     have moved furthest from their previous close (in the trade's direction)
     win, whatever their names."""
     strat = ScalpPriceAction(ScalpConfig())
-    session = TradingSession(strat, BacktestBroker(CFG, FREE))      # max_open_positions = 3
+    session = TradingSession(strat, BacktestBroker(replace(CFG, max_open_positions=2), FREE))
     session.start_day(DAY)
     session.ctx.meta = {"sentiment": {"bias": "BULLISH"}}
     prev = {"AAA": 100.0, "BBB": 99.0, "CCC": 98.0, "ZZZ": 97.0}   # ZZZ strongest, AAA weakest
@@ -268,4 +270,4 @@ def test_same_bar_signals_fill_the_slots_strongest_first_not_alphabetically():
     assert [s["strength_pct"] for s in strat.signals] == sorted(
         (s["strength_pct"] for s in strat.signals), reverse=True)
     assert {o.symbol for o in session.broker.orders() if o.status.value != "REJECTED"} == \
-        {"ZZZ", "CCC", "BBB"}
+        {"ZZZ", "CCC"}

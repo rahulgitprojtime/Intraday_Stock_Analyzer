@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from datetime import time
 
 from src.paper.orders import Bar
-from src.paper.strategies.common import DirectionalStrategy
+from src.paper.strategies.common import DirectionalStrategy, rules_from, swing_points
 from src.market.sentiment import SentimentConfig
 
 
@@ -43,11 +43,18 @@ class ScalpConfig:
     swing_lookback: int = 20
     stop_buffer: float = 0.1
     max_risk_mult: float = 4.0
-    target_r: float = 1.5
+    target_r: float = 2.0
     max_hold_minutes: float = 15
-    risk_per_trade: float = 500.0
-    max_position_value: float = 25_000.0
-    max_trades_per_symbol: int = 2
+    risk_per_trade: float = 1000.0
+    max_position_value: float = 49_000.0
+    max_trades_per_symbol: int = 1
+    max_trades_per_day: int | None = 20
+    # shared entry/exit rules (DECISIONS #33)
+    stop_atr_mult: float = 1.0
+    min_stop_pct: float = 0.15
+    rs_filter: bool = True
+    structure_filter: bool = True
+    min_reward_cost_mult: float = 3.0
     first_entry: time = time(9, 25)
     last_entry: time = time(15, 0)
 
@@ -62,18 +69,6 @@ class ScalpConfig:
 
 def avg_range(bars: list[Bar]) -> float:
     return sum(b.high - b.low for b in bars) / len(bars) if bars else 0.0
-
-
-def swing_points(bars: list[Bar]) -> tuple[list[int], list[int]]:
-    """Indices of 2-bar fractal swing highs and lows (needs 2 bars each side)."""
-    highs, lows = [], []
-    for i in range(2, len(bars) - 2):
-        h, lo = bars[i].high, bars[i].low
-        if all(h > bars[j].high for j in (i - 2, i - 1, i + 1, i + 2)):
-            highs.append(i)
-        if all(lo < bars[j].low for j in (i - 2, i - 1, i + 1, i + 2)):
-            lows.append(i)
-    return highs, lows
 
 
 def tight_breakout(bars: list[Bar], cfg: ScalpConfig) -> float | None:
@@ -135,7 +130,7 @@ class ScalpPriceAction(DirectionalStrategy):
                  sentiment_cfg: SentimentConfig = SentimentConfig()) -> None:
         super().__init__(cfg.risk_per_trade, cfg.max_position_value, cfg.target_r,
                          cfg.max_trades_per_symbol, cfg.first_entry, cfg.last_entry,
-                         cfg.max_hold_minutes, sentiment_cfg)
+                         cfg.max_hold_minutes, sentiment_cfg, rules_from(cfg))
         self.cfg = cfg
 
     def params(self) -> dict:

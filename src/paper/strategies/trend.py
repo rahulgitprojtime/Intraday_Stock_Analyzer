@@ -1,7 +1,7 @@
 """Intraday trend: named setups confirmed by indicators — DECISIONS #31. SIMULATION ONLY.
 
-For trades meant to last longer than a scalp (no time stop; exits at the
-stop, the target or the 15:15 square-off). Bars arrive oriented (shorts on
+For trades meant to last longer than a scalp: exits at the stop, the
+target, a stall exit, the time stop or the 15:15 square-off (#33). Bars arrive oriented (shorts on
 the mirrored chart), so every rule reads "long".
 
 1. Setup — the existing detectors (src/quantitative/setups.py) on 5-min
@@ -24,7 +24,8 @@ from src.data.candles import resample
 from src.data.models import SESSION_OPEN
 from src.indicators.core import adx, ema, rsi, supertrend, true_range, vwap
 from src.market.sentiment import SentimentConfig
-from src.paper.strategies.common import DirectionalStrategy, mirror_prep, to_candles
+from src.paper.strategies.common import (DirectionalStrategy, mirror_prep, rules_from,
+                                         to_candles)
 from src.quantitative.setups import (
     SetupState,
     ema_pullback,
@@ -45,9 +46,19 @@ class TrendConfig:
     min_5m_bars: int = 3
     ext_mult: float = 1.0           # EXTENDED when this x 5-min ATR past the trigger
     target_r: float = 2.0
-    risk_per_trade: float = 500.0
-    max_position_value: float = 25_000.0
+    risk_per_trade: float = 1000.0
+    max_position_value: float = 49_000.0
     max_trades_per_symbol: int = 2
+    max_trades_per_day: int | None = None
+    max_hold_minutes: float | None = 120   # time stop (was none: one trade held 09:45-15:15)
+    stall_minutes: float | None = 30      # free the slot when not +stall_r x R by then
+    stall_r: float = 0.5
+    # shared entry/exit rules (DECISIONS #33)
+    stop_atr_mult: float = 1.0
+    min_stop_pct: float = 0.15
+    rs_filter: bool = True
+    structure_filter: bool = True
+    min_reward_cost_mult: float = 3.0
     first_entry: time = time(9, 30)
     last_entry: time = time(14, 30)
 
@@ -93,8 +104,8 @@ class IntradayTrend(DirectionalStrategy):
     def __init__(self, cfg: TrendConfig = TrendConfig(),
                  sentiment_cfg: SentimentConfig = SentimentConfig()) -> None:
         super().__init__(cfg.risk_per_trade, cfg.max_position_value, cfg.target_r,
-                         cfg.max_trades_per_symbol, cfg.first_entry, cfg.last_entry, None,
-                         sentiment_cfg)
+                         cfg.max_trades_per_symbol, cfg.first_entry, cfg.last_entry,
+                         cfg.max_hold_minutes, sentiment_cfg, rules_from(cfg))
         self.cfg = cfg
         self._prev_state: dict = {}
 
@@ -105,6 +116,12 @@ class IntradayTrend(DirectionalStrategy):
     def params(self) -> dict:
         return {k: (v.isoformat() if isinstance(v, time) else list(v) if isinstance(v, tuple)
                     else v) for k, v in self.cfg.__dict__.items()}
+
+    def structure_bars(self, oriented):
+        """Structure is read on the entry timeframe: completed 5-min bars."""
+        now = oriented[-1].ts + timedelta(minutes=1)
+        return [c for c in resample(to_candles(oriented), self.cfg.timeframe, now)
+                if c.is_complete]
 
     def _bar_closes_bucket(self, ts: datetime) -> bool:
         start = datetime.combine(ts.date(), SESSION_OPEN)
